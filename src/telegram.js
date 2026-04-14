@@ -53,7 +53,7 @@ export const envoyerAlerte = async (alerte) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          chat_id: process.env.TELEGRAM_CHAT_ID,
+          chat_id: alerte.telegramChatId ?? process.env.TELEGRAM_CHAT_ID,
           text: message,
           parse_mode: 'MarkdownV2',
         }),

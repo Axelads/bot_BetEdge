@@ -37,30 +37,34 @@ const authentifierPocketBase = async () => {
   }
 }
 
-const recupererParisGagnants = async () => {
+const recupererUtilisateursActifs = async () => {
   const reponse = await fetch(
-    `${process.env.POCKETBASE_URL}/api/collections/paris/records?filter=statut%3D%22gagne%22&sort=-created&perPage=50`,
-    {
-      headers: { Authorization: tokenAdmin },
-    }
+    `${process.env.POCKETBASE_URL}/api/collections/profils/records?perPage=200`,
+    { headers: { Authorization: tokenAdmin } }
   )
+  if (!reponse.ok) throw new Error(`PocketBase erreur profils: HTTP ${reponse.status}`)
+  const data = await reponse.json()
+  return (data.items ?? []).filter(p => p.telegram_chat_id)
+}
 
-  if (!reponse.ok) throw new Error(`PocketBase erreur: HTTP ${reponse.status}`)
-
+const recupererParisGagnantsUtilisateur = async (userId) => {
+  const filtre = encodeURIComponent(`statut="gagne" && user="${userId}"`)
+  const reponse = await fetch(
+    `${process.env.POCKETBASE_URL}/api/collections/paris/records?filter=${filtre}&sort=-created&perPage=50`,
+    { headers: { Authorization: tokenAdmin } }
+  )
+  if (!reponse.ok) throw new Error(`PocketBase erreur paris gagnants: HTTP ${reponse.status}`)
   const data = await reponse.json()
   return data.items ?? []
 }
 
-const recupererTousParis = async () => {
+const recupererTousParisUtilisateur = async (userId) => {
+  const filtre = encodeURIComponent(`statut!="en_attente" && user="${userId}"`)
   const reponse = await fetch(
-    `${process.env.POCKETBASE_URL}/api/collections/paris/records?filter=statut!%3D%22en_attente%22&sort=-created&perPage=200`,
-    {
-      headers: { Authorization: tokenAdmin },
-    }
+    `${process.env.POCKETBASE_URL}/api/collections/paris/records?filter=${filtre}&sort=-created&perPage=200`,
+    { headers: { Authorization: tokenAdmin } }
   )
-
-  if (!reponse.ok) throw new Error(`PocketBase erreur: HTTP ${reponse.status}`)
-
+  if (!reponse.ok) throw new Error(`PocketBase erreur tous paris: HTTP ${reponse.status}`)
   const data = await reponse.json()
   return data.items ?? []
 }
@@ -94,6 +98,67 @@ const sauvegarderAlerte = async (alerte) => {
 
 // ─── Cycle principal ──────────────────────────────────────────────────────────
 
+const analyserPourUtilisateur = async (profil, matchsAVenir) => {
+  const { user: userId, telegram_chat_id: telegramChatId } = profil
+  console.log(`\n[bot] ── Utilisateur ${userId} ──`)
+
+  const [parisGagnants, tousParis] = await Promise.all([
+    recupererParisGagnantsUtilisateur(userId),
+    recupererTousParisUtilisateur(userId),
+  ])
+
+  console.log(`[bot] ${parisGagnants.length} paris gagnants | ${tousParis.length} paris terminés`)
+
+  if (parisGagnants.length < 3) {
+    console.log(`[bot] Pas assez de paris gagnants (minimum 3). Passage au suivant.`)
+    return 0
+  }
+
+  const stats = calculerStats(tousParis)
+  console.log(`[bot] Stats — sport: ${stats.meileurSport} | type: ${stats.meilleurTypePari}`)
+
+  let nbAlertes = 0
+
+  for (const match of matchsAVenir) {
+    const analyse = await analyserMatch(match, parisGagnants, stats)
+
+    if (!analyse) continue
+
+    console.log(`[bot] ${match.rencontre} → ${analyse.score_similarite}/100 (${analyse.confiance})`)
+
+    if (doitEnvoyerAlerte(analyse)) {
+      console.log(`[bot] ✅ Alerte: ${analyse.pari_recommande}`)
+
+      const alerte = {
+        ...preparerAlerte(match, analyse),
+        sport: match.sport,
+        user: userId,
+      }
+
+      const alerteSauvegardee = await sauvegarderAlerte(alerte)
+
+      if (alerteSauvegardee) {
+        // Envoyer sur le Telegram PERSONNEL de l'utilisateur
+        const envoye = await envoyerAlerte({ ...alerte, telegramChatId })
+
+        if (envoye) {
+          await fetch(
+            `${process.env.POCKETBASE_URL}/api/collections/alertes_bot/records/${alerteSauvegardee.id}`,
+            {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json', Authorization: tokenAdmin },
+              body: JSON.stringify({ telegram_envoye: true }),
+            }
+          )
+          nbAlertes++
+        }
+      }
+    }
+  }
+
+  return nbAlertes
+}
+
 const lancerAnalyse = async () => {
   const debut = Date.now()
   console.log('\n═══════════════════════════════════════')
@@ -101,27 +166,18 @@ const lancerAnalyse = async () => {
   console.log('═══════════════════════════════════════')
 
   try {
-    // 1. Authentification PocketBase
     await authentifierPocketBase()
 
-    // 2. Récupération des données de l'Expert
-    const [parisGagnants, tousParis] = await Promise.all([
-      recupererParisGagnants(),
-      recupererTousParis(),
-    ])
+    // Récupérer tous les utilisateurs avec un Telegram configuré
+    const utilisateurs = await recupererUtilisateursActifs()
+    console.log(`[bot] ${utilisateurs.length} utilisateur(s) actif(s) avec Telegram`)
 
-    console.log(`[bot] ${parisGagnants.length} paris gagnants | ${tousParis.length} paris terminés`)
-
-    if (parisGagnants.length < 3) {
-      console.log('[bot] Pas assez de paris gagnants pour analyser (minimum 3). En attente...')
+    if (utilisateurs.length === 0) {
+      console.log('[bot] Aucun utilisateur avec Telegram configuré. En attente...')
       return
     }
 
-    // 3. Calcul des stats de l'Expert
-    const stats = calculerStats(tousParis)
-    console.log(`[bot] Stats — meilleur sport: ${stats.meileurSport} | meilleur type: ${stats.meilleurTypePari}`)
-
-    // 4. Récupération des matchs à venir
+    // Récupérer les matchs une seule fois pour tous les utilisateurs
     const matchsAVenir = await recupererMatchsAVenir()
 
     if (matchsAVenir.length === 0) {
@@ -129,59 +185,15 @@ const lancerAnalyse = async () => {
       return
     }
 
-    // 5. Analyse de chaque match
-    let nbAlertes = 0
-
-    for (const match of matchsAVenir) {
-      console.log(`\n[bot] Analyse: ${match.rencontre}...`)
-
-      const analyse = await analyserMatch(match, parisGagnants, stats)
-
-      if (!analyse) {
-        console.log(`[bot] → Analyse impossible (erreur API)`)
-        continue
-      }
-
-      console.log(`[bot] → Score: ${analyse.score_similarite}/100 | Confiance: ${analyse.confiance}`)
-
-      if (doitEnvoyerAlerte(analyse)) {
-        console.log(`[bot] → ✅ Alerte déclenchée! ${analyse.pari_recommande}`)
-
-        // Préparer et sauvegarder l'alerte
-        const alerte = {
-          ...preparerAlerte(match, analyse),
-          sport: match.sport,
-        }
-
-        const alerteSauvegardee = await sauvegarderAlerte(alerte)
-
-        if (alerteSauvegardee) {
-          // Envoyer sur Telegram
-          const envoye = await envoyerAlerte(alerte)
-
-          if (envoye) {
-            // Marquer comme envoyé dans PocketBase
-            await fetch(
-              `${process.env.POCKETBASE_URL}/api/collections/alertes_bot/records/${alerteSauvegardee.id}`,
-              {
-                method: 'PATCH',
-                headers: {
-                  'Content-Type': 'application/json',
-                  Authorization: tokenAdmin,
-                },
-                body: JSON.stringify({ telegram_envoye: true }),
-              }
-            )
-            nbAlertes++
-          }
-        }
-      } else {
-        console.log(`[bot] → ❌ Score insuffisant ou confiance faible`)
-      }
+    // Analyser pour chaque utilisateur
+    let nbAlertesTotal = 0
+    for (const profil of utilisateurs) {
+      const nb = await analyserPourUtilisateur(profil, matchsAVenir)
+      nbAlertesTotal += nb
     }
 
     const duree = ((Date.now() - debut) / 1000).toFixed(1)
-    console.log(`\n[bot] Cycle terminé en ${duree}s — ${nbAlertes} alerte(s) envoyée(s)`)
+    console.log(`\n[bot] Cycle terminé en ${duree}s — ${nbAlertesTotal} alerte(s) envoyée(s)`)
     console.log('═══════════════════════════════════════\n')
   } catch (erreur) {
     console.error('[bot] Erreur critique dans le cycle:', erreur.message)
