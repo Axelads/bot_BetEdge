@@ -53,6 +53,77 @@ Réponds UNIQUEMENT avec ce JSON (sans markdown, sans texte autour) :
 }
 `
 
+const construirePromptCoteAnomale = (match, anomalie, parisGagnants, stats) => `
+Tu es un assistant d'analyse de paris sportifs expert, spécialisé dans la détection de valeur (value betting).
+
+Patterns gagnants de l'expert (${parisGagnants.length} paris) :
+${JSON.stringify(parisGagnants.slice(0, 15), null, 2)}
+
+Statistiques expert : sport=${stats.meileurSport} | type=${stats.meilleurTypePari} | tranche cote=${stats.meilleureTrancheCote} | win rate haute confiance=${stats.tauxReussiteHauteConfiance}%
+
+ANOMALIE DE MARCHÉ DÉTECTÉE
+Match : ${match.rencontre} (${match.competition}) — ${match.sport}
+Date : ${new Date(match.date_match).toLocaleString('fr-FR')}
+
+L'outcome "${anomalie.outcome}" affiche une cote anormalement haute :
+- Médiane du marché (${anomalie.nb_bookmakers} bookmakers) : ${anomalie.cote_mediane}
+- Cote anormale trouvée : ${anomalie.cote_anomalie} sur ${anomalie.bookmaker}
+- Écart : +${anomalie.ecart_pourcent}% au-dessus du marché
+- Toutes les cotes disponibles : ${anomalie.toutes_cotes.join(' / ')}
+${anomalie.marge_marche !== null ? `- Marge best-available du marché : ${anomalie.marge_marche}% (normale : 4-7%)` : ''}
+
+Cotes H2H du match :
+- Domicile : ${match.cotes.domicile ?? 'N/A'}
+- Nul : ${match.cotes.nul ?? 'N/A'}
+- Extérieur : ${match.cotes.exterieur ?? 'N/A'}
+- Over 2.5 : ${match.cotes.over25 ?? 'N/A'}
+- Under 2.5 : ${match.cotes.under25 ?? 'N/A'}
+
+QUESTION : Cette cote anormale est-elle une vraie opportunité de value bet, ou existe-t-il une raison valable (blessure majeure récente, suspension, erreur de ligne bookmaker, équipe B alignée) ?
+Est-elle cohérente avec les patterns de l'expert ?
+
+Réponds UNIQUEMENT avec ce JSON (sans markdown, sans texte autour) :
+{
+  "est_opportunite_reelle": true ou false,
+  "score_valeur": nombre entre 0 et 100,
+  "pari_recommande": "description courte du pari suggéré",
+  "type_pari_recommande": "victoire_domicile | victoire_exterieur | nul | plus_de | moins_de | les_deux_marquent",
+  "valeur_pari": "valeur précise ex: équipe, 2.5, oui",
+  "cote_recommandee": nombre (la cote anormale trouvée),
+  "tags_correspondants": ["tag1", "tag2"],
+  "raisonnement": "2-3 phrases expliquant l'opportunité ou la raison de la fausse alerte",
+  "confiance": "faible" ou "moyenne" ou "elevee",
+  "raison_anomalie_probable": "genuine_value | erreur_bookmaker | blessure_non_integree | equipe_b | autre"
+}
+`
+
+export const analyserCoteAnomale = async (match, anomalie, parisGagnants, stats) => {
+  try {
+    const message = await client.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1000,
+      messages: [
+        {
+          role: 'user',
+          content: construirePromptCoteAnomale(match, anomalie, parisGagnants, stats),
+        }
+      ],
+    })
+
+    const texteReponse = message.content[0].text.trim()
+    const jsonNettoye = texteReponse
+      .replace(/^```json\n?/, '')
+      .replace(/^```\n?/, '')
+      .replace(/\n?```$/, '')
+      .trim()
+
+    return JSON.parse(jsonNettoye)
+  } catch (erreur) {
+    console.error(`[analyseur] Erreur analyse anomalie ${match.rencontre}:`, erreur.message)
+    return null
+  }
+}
+
 export const analyserMatch = async (match, parisGagnants, stats) => {
   try {
     const message = await client.messages.create({

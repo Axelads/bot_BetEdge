@@ -86,6 +86,7 @@ const formaterMatch = (match, sport) => {
       over25:     extraireCoteTotal(bookmakers, 'Over'),
       under25:    extraireCoteTotal(bookmakers, 'Under'),
     },
+    bookmakers_bruts: bookmakers,
   }
 }
 

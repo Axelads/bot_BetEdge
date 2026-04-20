@@ -125,9 +125,39 @@ export const preparerAlerte = (match, analyse) => {
     valeur_pari: analyse.valeur_pari ?? analyse.pari_recommande,
     cote_marche: analyse.cote_suggeree ?? null,
     score_similarite: analyse.score_similarite,
-    score_valeur: analyse.score_similarite, // même valeur pour l'instant
+    score_valeur: analyse.score_similarite,
     raisonnement_bot: analyse.raisonnement,
     tags_detectes: analyse.tags_correspondants ?? [],
+    telegram_envoye: false,
+    decision_expert: 'en_attente',
+  }
+}
+
+// Détermine si une alerte de type "cote anormale" doit être envoyée
+export const doitEnvoyerAlerteAnomalie = (anomalie, analyseAI) => {
+  return (
+    anomalie !== null &&
+    anomalie.score_anomalie >= 60 &&
+    analyseAI !== null &&
+    analyseAI.est_opportunite_reelle === true &&
+    analyseAI.confiance !== 'faible' &&
+    analyseAI.score_valeur >= 65
+  )
+}
+
+// Prépare l'objet alerte "cote anormale" pour PocketBase
+export const preparerAlerteAnomalie = (match, anomalie, analyseAI) => {
+  return {
+    rencontre: match.rencontre,
+    competition: match.competition,
+    date_match: match.date_match,
+    type_pari: analyseAI.type_pari_recommande,
+    valeur_pari: analyseAI.valeur_pari ?? analyseAI.pari_recommande,
+    cote_marche: anomalie.cote_anomalie,
+    score_similarite: anomalie.score_anomalie,
+    score_valeur: analyseAI.score_valeur,
+    raisonnement_bot: `[Cote anormale +${anomalie.ecart_pourcent}% vs marché] ${analyseAI.raisonnement}`,
+    tags_detectes: analyseAI.tags_correspondants ?? [],
     telegram_envoye: false,
     decision_expert: 'en_attente',
   }

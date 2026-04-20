@@ -3,10 +3,11 @@ import fetch from 'node-fetch'
 import dotenv from 'dotenv'
 dotenv.config()
 
-import { recupererMatchsAVenir }                     from './collecteurCotes.js'
-import { analyserMatch }                             from './analyseur.js'
-import { calculerStats, doitEnvoyerAlerte, preparerAlerte } from './comparateurPatterns.js'
-import { envoyerAlerte, envoyerMessageDemarrage }    from './telegram.js'
+import { recupererMatchsAVenir }                              from './collecteurCotes.js'
+import { analyserMatch, analyserCoteAnomale }                from './analyseur.js'
+import { calculerStats, doitEnvoyerAlerte, preparerAlerte, doitEnvoyerAlerteAnomalie, preparerAlerteAnomalie } from './comparateurPatterns.js'
+import { detecterAnomaliesCotes }                            from './detecteurAnomalie.js'
+import { envoyerAlerte, envoyerAlerteAnomalie, envoyerMessageDemarrage } from './telegram.js'
 
 // ─── PocketBase ───────────────────────────────────────────────────────────────
 
@@ -96,6 +97,21 @@ const sauvegarderAlerte = async (alerte) => {
   }
 }
 
+const marquerAlerteTelegramEnvoyee = async (alerteId) => {
+  try {
+    await fetch(
+      `${process.env.POCKETBASE_URL}/api/collections/alertes_bot/records/${alerteId}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: tokenAdmin },
+        body: JSON.stringify({ telegram_envoye: true }),
+      }
+    )
+  } catch (erreur) {
+    console.error('[pocketbase] Erreur PATCH telegram_envoye:', erreur.message)
+  }
+}
+
 // ─── Cycle principal ──────────────────────────────────────────────────────────
 
 const analyserPourUtilisateur = async (profil, matchsAVenir) => {
@@ -120,14 +136,15 @@ const analyserPourUtilisateur = async (profil, matchsAVenir) => {
   let nbAlertes = 0
 
   for (const match of matchsAVenir) {
+    // ── Piste 1 : Pattern matching ──────────────────────────────────────────
     const analyse = await analyserMatch(match, parisGagnants, stats)
 
-    if (!analyse) continue
+    if (analyse) {
+      console.log(`[bot] ${match.rencontre} → patterns ${analyse.score_similarite}/100 (${analyse.confiance})`)
+    }
 
-    console.log(`[bot] ${match.rencontre} → ${analyse.score_similarite}/100 (${analyse.confiance})`)
-
-    if (doitEnvoyerAlerte(analyse)) {
-      console.log(`[bot] ✅ Alerte: ${analyse.pari_recommande}`)
+    if (analyse && doitEnvoyerAlerte(analyse)) {
+      console.log(`[bot] ✅ Alerte patterns: ${analyse.pari_recommande}`)
 
       const alerte = {
         ...preparerAlerte(match, analyse),
@@ -138,19 +155,52 @@ const analyserPourUtilisateur = async (profil, matchsAVenir) => {
       const alerteSauvegardee = await sauvegarderAlerte(alerte)
 
       if (alerteSauvegardee) {
-        // Envoyer sur le Telegram PERSONNEL de l'utilisateur
         const envoye = await envoyerAlerte({ ...alerte, telegramChatId })
-
         if (envoye) {
-          await fetch(
-            `${process.env.POCKETBASE_URL}/api/collections/alertes_bot/records/${alerteSauvegardee.id}`,
-            {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json', Authorization: tokenAdmin },
-              body: JSON.stringify({ telegram_envoye: true }),
-            }
-          )
+          await marquerAlerteTelegramEnvoyee(alerteSauvegardee.id)
           nbAlertes++
+        }
+      }
+    }
+
+    // ── Piste 2 : Anomalie de cotes ─────────────────────────────────────────
+    const anomalie = detecterAnomaliesCotes(match)
+
+    if (anomalie) {
+      console.log(`[bot] 🔍 Anomalie ${match.rencontre}: "${anomalie.outcome}" +${anomalie.ecart_pourcent}% vs marché (${anomalie.bookmaker})`)
+
+      const analyseAnomalie = await analyserCoteAnomale(match, anomalie, parisGagnants, stats)
+
+      if (analyseAnomalie) {
+        console.log(`[bot] ${match.rencontre} → valeur ${analyseAnomalie.score_valeur}/100 (${analyseAnomalie.confiance}) — ${analyseAnomalie.raison_anomalie_probable}`)
+      }
+
+      if (doitEnvoyerAlerteAnomalie(anomalie, analyseAnomalie)) {
+        console.log(`[bot] ⚡ Alerte anomalie: ${analyseAnomalie.pari_recommande}`)
+
+        const donneesAlertePB = {
+          ...preparerAlerteAnomalie(match, anomalie, analyseAnomalie),
+          sport: match.sport,
+          user: userId,
+        }
+
+        // Champs extras pour le message Telegram uniquement (non envoyés à PocketBase)
+        const alerteAnomalie = {
+          ...donneesAlertePB,
+          outcome_anomalie: anomalie.outcome,
+          cote_mediane: anomalie.cote_mediane,
+          bookmaker_anomalie: anomalie.bookmaker,
+          ecart_pourcent: anomalie.ecart_pourcent,
+        }
+
+        const alerteSauvegardee = await sauvegarderAlerte(donneesAlertePB)
+
+        if (alerteSauvegardee) {
+          const envoye = await envoyerAlerteAnomalie({ ...alerteAnomalie, telegramChatId })
+          if (envoye) {
+            await marquerAlerteTelegramEnvoyee(alerteSauvegardee.id)
+            nbAlertes++
+          }
         }
       }
     }
