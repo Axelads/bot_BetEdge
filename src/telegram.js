@@ -14,6 +14,12 @@ const echapperMarkdown = (texte) => {
   return String(texte).replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&')
 }
 
+const CONFIANCE_LABEL = {
+  elevee:  '🟢 Élevée',
+  moyenne: '🟡 Moyenne',
+  faible:  '🔴 Faible',
+}
+
 const formaterMessage = (alerte) => {
   const emoji = EMOJI_SPORT[alerte.sport] ?? '🏆'
   const date = new Date(alerte.date_match).toLocaleString('fr-FR', {
@@ -26,6 +32,7 @@ const formaterMessage = (alerte) => {
 
   const tags = (alerte.tags_detectes ?? []).map(t => `\\#${echapperMarkdown(t)}`).join(' ')
   const cote = alerte.cote_marche ? `~${echapperMarkdown(alerte.cote_marche)}` : 'à vérifier'
+  const confiance = CONFIANCE_LABEL[alerte.confiance] ?? '🟡 Moyenne'
 
   return `🎯 *BetEdge — Opportunité détectée*
 
@@ -36,6 +43,7 @@ ${emoji} *${echapperMarkdown(alerte.rencontre)}* — ${echapperMarkdown(alerte.c
 💰 *Cote sur le marché :* ${cote}
 
 📊 Similarité avec tes patterns : *${echapperMarkdown(alerte.score_similarite)}/100*
+🔮 Confiance du bot : *${echapperMarkdown(confiance)}*
 ${tags ? `🏷️ ${tags}` : ''}
 
 🤖 _${echapperMarkdown(alerte.raisonnement_bot)}_
@@ -57,6 +65,7 @@ const formaterMessageAnomalie = (alerte) => {
   const ecart = alerte.ecart_pourcent ? `\\+${echapperMarkdown(alerte.ecart_pourcent)}%` : ''
   const bookmaker = alerte.bookmaker_anomalie ? echapperMarkdown(alerte.bookmaker_anomalie) : 'un bookmaker'
   const coteMediane = alerte.cote_mediane ? echapperMarkdown(alerte.cote_mediane) : '?'
+  const confiance = CONFIANCE_LABEL[alerte.confiance] ?? '🟡 Moyenne'
 
   return `⚡ *BetEdge — Cote Anormale Détectée*
 
@@ -70,6 +79,7 @@ ${emoji} *${echapperMarkdown(alerte.rencontre)}* — ${echapperMarkdown(alerte.c
 💰 *Cote disponible :* ${echapperMarkdown(alerte.cote_marche)} vs marché à ${coteMediane}
 
 📊 Score de valeur : *${echapperMarkdown(alerte.score_valeur)}/100* \\| Anomalie : ${ecart}
+🔮 Confiance du bot : *${echapperMarkdown(confiance)}*
 ${tags ? `🏷️ ${tags}` : ''}
 
 🤖 _${echapperMarkdown(alerte.raisonnement_bot)}_

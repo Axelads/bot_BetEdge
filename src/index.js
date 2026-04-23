@@ -155,7 +155,7 @@ const analyserPourUtilisateur = async (profil, matchsAVenir) => {
       const alerteSauvegardee = await sauvegarderAlerte(alerte)
 
       if (alerteSauvegardee) {
-        const envoye = await envoyerAlerte({ ...alerte, telegramChatId })
+        const envoye = await envoyerAlerte({ ...alerte, telegramChatId, confiance: analyse.confiance })
         if (envoye) {
           await marquerAlerteTelegramEnvoyee(alerteSauvegardee.id)
           nbAlertes++
@@ -191,6 +191,7 @@ const analyserPourUtilisateur = async (profil, matchsAVenir) => {
           cote_mediane: anomalie.cote_mediane,
           bookmaker_anomalie: anomalie.bookmaker,
           ecart_pourcent: anomalie.ecart_pourcent,
+          confiance: analyseAnomalie.confiance,
         }
 
         const alerteSauvegardee = await sauvegarderAlerte(donneesAlertePB)
