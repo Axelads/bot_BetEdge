@@ -9,9 +9,12 @@ const EMOJI_SPORT = {
   rugby:      '🏉',
 }
 
-// Échappe les caractères spéciaux pour MarkdownV2 Telegram
-const echapperMarkdown = (texte) => {
-  return String(texte).replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&')
+// Échappe les caractères spéciaux pour HTML Telegram
+const echapperHtml = (texte) => {
+  return String(texte)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
 }
 
 const CONFIANCE_LABEL = {
@@ -30,25 +33,25 @@ const formaterMessage = (alerte) => {
     minute: '2-digit',
   })
 
-  const tags = (alerte.tags_detectes ?? []).map(t => `\\#${echapperMarkdown(t)}`).join(' ')
-  const cote = alerte.cote_marche ? echapperMarkdown(alerte.cote_marche) : 'à vérifier'
+  const tags = (alerte.tags_detectes ?? []).map(t => `#${echapperHtml(t)}`).join(' ')
+  const cote = alerte.cote_marche ? echapperHtml(alerte.cote_marche) : 'à vérifier'
   const confiance = CONFIANCE_LABEL[alerte.confiance] ?? '🟡 Moyenne'
 
-  return `🎯 *BetEdge — Opportunité détectée*
+  return `🎯 <b>BetEdge — Opportunité détectée</b>
 
-${emoji} *${echapperMarkdown(alerte.rencontre)}* — ${echapperMarkdown(alerte.competition)}
-📅 ${echapperMarkdown(date)}
+${emoji} <b>${echapperHtml(alerte.rencontre)}</b> — ${echapperHtml(alerte.competition)}
+📅 ${echapperHtml(date)}
 
-💡 *Pari suggéré :* ${echapperMarkdown(alerte.valeur_pari)}
-💰 *Cote sur le marché :* ${cote}
+💡 <b>Pari suggéré :</b> ${echapperHtml(alerte.valeur_pari)}
+💰 <b>Cote sur le marché :</b> ${cote}
 
-📊 Similarité avec tes patterns : *${echapperMarkdown(alerte.score_similarite)}/100*
-🔮 Confiance du bot : *${echapperMarkdown(confiance)}*
+📊 Similarité avec tes patterns : <b>${echapperHtml(alerte.score_similarite)}/100</b>
+🔮 Confiance du bot : <b>${echapperHtml(confiance)}</b>
 ${tags ? `🏷️ ${tags}` : ''}
 
-🤖 _${echapperMarkdown(alerte.raisonnement_bot)}_
+🤖 <i>${echapperHtml(alerte.raisonnement_bot)}</i>
 
-→ Tu places ? Réponds *OUI* pour logger ou *NON* pour ignorer`
+→ Tu places ? Réponds <b>OUI</b> pour logger ou <b>NON</b> pour ignorer`
 }
 
 const formaterMessageAnomalie = (alerte) => {
@@ -61,30 +64,30 @@ const formaterMessageAnomalie = (alerte) => {
     minute: '2-digit',
   })
 
-  const tags = (alerte.tags_detectes ?? []).map(t => `\\#${echapperMarkdown(t)}`).join(' ')
-  const ecart = alerte.ecart_pourcent ? `\\+${echapperMarkdown(alerte.ecart_pourcent)}%` : ''
-  const bookmaker = alerte.bookmaker_anomalie ? echapperMarkdown(alerte.bookmaker_anomalie) : 'un bookmaker'
-  const coteMediane = alerte.cote_mediane ? echapperMarkdown(alerte.cote_mediane) : '?'
+  const tags = (alerte.tags_detectes ?? []).map(t => `#${echapperHtml(t)}`).join(' ')
+  const ecart = alerte.ecart_pourcent ? `+${echapperHtml(alerte.ecart_pourcent)}%` : ''
+  const bookmaker = alerte.bookmaker_anomalie ? echapperHtml(alerte.bookmaker_anomalie) : 'un bookmaker'
+  const coteMediane = alerte.cote_mediane ? echapperHtml(alerte.cote_mediane) : '?'
   const confiance = CONFIANCE_LABEL[alerte.confiance] ?? '🟡 Moyenne'
 
-  return `⚡ *BetEdge — Cote Anormale Détectée*
+  return `⚡ <b>BetEdge — Cote Anormale Détectée</b>
 
-${emoji} *${echapperMarkdown(alerte.rencontre)}* — ${echapperMarkdown(alerte.competition)}
-📅 ${echapperMarkdown(date)}
+${emoji} <b>${echapperHtml(alerte.rencontre)}</b> — ${echapperHtml(alerte.competition)}
+📅 ${echapperHtml(date)}
 
-🔍 *Anomalie de marché :*
-"${echapperMarkdown(alerte.outcome_anomalie)}" → médiane ${coteMediane} → trouvée à *${echapperMarkdown(alerte.cote_marche)}* sur ${bookmaker} \\(${ecart}\\)
+🔍 <b>Anomalie de marché :</b>
+"${echapperHtml(alerte.outcome_anomalie)}" → médiane ${coteMediane} → trouvée à <b>${echapperHtml(alerte.cote_marche)}</b> sur ${bookmaker} (${ecart})
 
-💡 *Pari suggéré :* ${echapperMarkdown(alerte.valeur_pari)}
-💰 *Cote disponible :* ${echapperMarkdown(alerte.cote_marche)} vs marché à ${coteMediane}
+💡 <b>Pari suggéré :</b> ${echapperHtml(alerte.valeur_pari)}
+💰 <b>Cote disponible :</b> ${echapperHtml(alerte.cote_marche)} vs marché à ${coteMediane}
 
-📊 Score de valeur : *${echapperMarkdown(alerte.score_valeur)}/100* \\| Anomalie : ${ecart}
-🔮 Confiance du bot : *${echapperMarkdown(confiance)}*
+📊 Score de valeur : <b>${echapperHtml(alerte.score_valeur)}/100</b> | Anomalie : ${ecart}
+🔮 Confiance du bot : <b>${echapperHtml(confiance)}</b>
 ${tags ? `🏷️ ${tags}` : ''}
 
-🤖 _${echapperMarkdown(alerte.raisonnement_bot)}_
+🤖 <i>${echapperHtml(alerte.raisonnement_bot)}</i>
 
-→ Tu places ? Réponds *OUI* pour logger ou *NON* pour ignorer`
+→ Tu places ? Réponds <b>OUI</b> pour logger ou <b>NON</b> pour ignorer`
 }
 
 export const envoyerAlerteAnomalie = async (alerte) => {
@@ -99,7 +102,7 @@ export const envoyerAlerteAnomalie = async (alerte) => {
         body: JSON.stringify({
           chat_id: alerte.telegramChatId ?? process.env.TELEGRAM_CHAT_ID,
           text: message,
-          parse_mode: 'MarkdownV2',
+          parse_mode: 'HTML',
         }),
       }
     )
@@ -131,7 +134,7 @@ export const envoyerAlerte = async (alerte) => {
         body: JSON.stringify({
           chat_id: alerte.telegramChatId ?? process.env.TELEGRAM_CHAT_ID,
           text: message,
-          parse_mode: 'MarkdownV2',
+          parse_mode: 'HTML',
         }),
       }
     )
@@ -161,8 +164,8 @@ export const envoyerMessageDemarrage = async () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           chat_id: process.env.TELEGRAM_CHAT_ID,
-          text: '🟢 *BetEdge Bot démarré*\nAnalyse des matchs en cours\\.\\.\\.',
-          parse_mode: 'MarkdownV2',
+          text: '🟢 <b>BetEdge Bot démarré</b>\nAnalyse des matchs en cours...',
+          parse_mode: 'HTML',
         }),
       }
     )
