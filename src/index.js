@@ -9,6 +9,10 @@ import { calculerStats, doitEnvoyerAlerte, preparerAlerte, doitEnvoyerAlerteAnom
 import { detecterAnomaliesCotes }                            from './detecteurAnomalie.js'
 import { envoyerAlerte, envoyerAlerteAnomalie, envoyerMessageDemarrage } from './telegram.js'
 
+// ─── Constantes ──────────────────────────────────────────────────────────────
+
+const ID_SUPERUSER = 'ujotze4rf8qhs9k'
+
 // ─── PocketBase ───────────────────────────────────────────────────────────────
 
 let tokenAdmin = null
@@ -70,6 +74,30 @@ const recupererTousParisUtilisateur = async (userId) => {
   return data.items ?? []
 }
 
+// Récupère TOUS les paris gagnants de tous les utilisateurs (mode admin agrégé)
+const recupererTousParisGagnantsAggrege = async () => {
+  const filtre = encodeURIComponent('statut="gagne"')
+  const reponse = await fetch(
+    `${process.env.POCKETBASE_URL}/api/collections/paris/records?filter=${filtre}&sort=-confiance,-created&perPage=500`,
+    { headers: { Authorization: tokenAdmin } }
+  )
+  if (!reponse.ok) throw new Error(`PocketBase erreur paris gagnants agrégés: HTTP ${reponse.status}`)
+  const data = await reponse.json()
+  return data.items ?? []
+}
+
+// Récupère TOUS les paris terminés de tous les utilisateurs (pour les stats agrégées)
+const recupererTousParisTerminesAggrege = async () => {
+  const filtre = encodeURIComponent('statut!="en_attente"')
+  const reponse = await fetch(
+    `${process.env.POCKETBASE_URL}/api/collections/paris/records?filter=${filtre}&sort=-created&perPage=500`,
+    { headers: { Authorization: tokenAdmin } }
+  )
+  if (!reponse.ok) throw new Error(`PocketBase erreur paris terminés agrégés: HTTP ${reponse.status}`)
+  const data = await reponse.json()
+  return data.items ?? []
+}
+
 const sauvegarderAlerte = async (alerte) => {
   try {
     const reponse = await fetch(
@@ -113,6 +141,106 @@ const marquerAlerteTelegramEnvoyee = async (alerteId) => {
 }
 
 // ─── Cycle principal ──────────────────────────────────────────────────────────
+
+// Analyse pour le superadmin : utilise les données agrégées de TOUS les utilisateurs
+const analyserPourAdmin = async (profil, matchsAVenir, nbUtilisateurs) => {
+  const { user: userId, telegram_chat_id: telegramChatId } = profil
+  console.log(`\n[bot] ── SUPERADMIN ${userId} — MODE AGGRÉGÉ ──`)
+  console.log(`[bot] Chargement des paris gagnants de toute la communauté...`)
+
+  const [parisGagnants, tousParis] = await Promise.all([
+    recupererTousParisGagnantsAggrege(),
+    recupererTousParisTerminesAggrege(),
+  ])
+
+  // Dédoublonner les users uniques représentés dans les paris gagnants
+  const usersRepresentes = new Set(parisGagnants.map(p => p.user).filter(Boolean))
+
+  console.log(`[bot] ${parisGagnants.length} paris gagnants | ${tousParis.length} paris terminés | ${usersRepresentes.size} parieur(s) représenté(s)`)
+
+  if (parisGagnants.length < 2) {
+    console.log(`[bot] Pas assez de données sur la plateforme (minimum 2 paris gagnants).`)
+    return 0
+  }
+
+  const stats = calculerStats(tousParis)
+  console.log(`[bot] Stats agrégées — sport: ${stats.meileurSport} | type: ${stats.meilleurTypePari}`)
+
+  let nbAlertes = 0
+
+  for (const match of matchsAVenir) {
+    // ── Piste 1 : Pattern matching agrégé ──────────────────────────────────
+    const analyse = await analyserMatch(match, parisGagnants, stats, usersRepresentes.size)
+
+    if (analyse) {
+      console.log(`[bot] ${match.rencontre} → patterns ${analyse.score_similarite}/100 (${analyse.confiance})`)
+    }
+
+    if (analyse && doitEnvoyerAlerte(analyse)) {
+      console.log(`[bot] ✅ Alerte patterns agrégée: ${analyse.pari_recommande}`)
+
+      const alerte = {
+        ...preparerAlerte(match, analyse),
+        sport: match.sport,
+        user: userId,
+      }
+
+      const alerteSauvegardee = await sauvegarderAlerte(alerte)
+
+      if (alerteSauvegardee) {
+        const envoye = await envoyerAlerte({ ...alerte, telegramChatId, confiance: analyse.confiance })
+        if (envoye) {
+          await marquerAlerteTelegramEnvoyee(alerteSauvegardee.id)
+          nbAlertes++
+        }
+      }
+    }
+
+    // ── Piste 2 : Anomalie de cotes (données agrégées) ──────────────────────
+    const anomalie = detecterAnomaliesCotes(match)
+
+    if (anomalie) {
+      console.log(`[bot] 🔍 Anomalie ${match.rencontre}: "${anomalie.outcome}" +${anomalie.ecart_pourcent}% vs marché (${anomalie.bookmaker})`)
+
+      const analyseAnomalie = await analyserCoteAnomale(match, anomalie, parisGagnants, stats, usersRepresentes.size)
+
+      if (analyseAnomalie) {
+        console.log(`[bot] ${match.rencontre} → valeur ${analyseAnomalie.score_valeur}/100 (${analyseAnomalie.confiance})`)
+      }
+
+      if (doitEnvoyerAlerteAnomalie(anomalie, analyseAnomalie)) {
+        console.log(`[bot] ⚡ Alerte anomalie agrégée: ${analyseAnomalie.pari_recommande}`)
+
+        const donneesAlertePB = {
+          ...preparerAlerteAnomalie(match, anomalie, analyseAnomalie),
+          sport: match.sport,
+          user: userId,
+        }
+
+        const alerteAnomalie = {
+          ...donneesAlertePB,
+          outcome_anomalie: anomalie.outcome,
+          cote_mediane: anomalie.cote_mediane,
+          bookmaker_anomalie: anomalie.bookmaker,
+          ecart_pourcent: anomalie.ecart_pourcent,
+          confiance: analyseAnomalie.confiance,
+        }
+
+        const alerteSauvegardee = await sauvegarderAlerte(donneesAlertePB)
+
+        if (alerteSauvegardee) {
+          const envoye = await envoyerAlerteAnomalie({ ...alerteAnomalie, telegramChatId })
+          if (envoye) {
+            await marquerAlerteTelegramEnvoyee(alerteSauvegardee.id)
+            nbAlertes++
+          }
+        }
+      }
+    }
+  }
+
+  return nbAlertes
+}
 
 const analyserPourUtilisateur = async (profil, matchsAVenir) => {
   const { user: userId, telegram_chat_id: telegramChatId } = profil
@@ -237,9 +365,13 @@ const lancerAnalyse = async () => {
     }
 
     // Analyser pour chaque utilisateur
+    // Le superadmin reçoit une analyse basée sur les données agrégées de toute la plateforme
     let nbAlertesTotal = 0
     for (const profil of utilisateurs) {
-      const nb = await analyserPourUtilisateur(profil, matchsAVenir)
+      const estAdmin = profil.user === ID_SUPERUSER
+      const nb = estAdmin
+        ? await analyserPourAdmin(profil, matchsAVenir, utilisateurs.length)
+        : await analyserPourUtilisateur(profil, matchsAVenir)
       nbAlertesTotal += nb
     }
 

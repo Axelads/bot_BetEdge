@@ -4,14 +4,20 @@ dotenv.config()
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-const construirePromptSysteme = (parisGagnants, stats) => `
+const construirePromptSysteme = (parisGagnants, stats, nbUtilisateurs = null) => {
+  const source = nbUtilisateurs
+    ? `une communauté de ${nbUtilisateurs} parieur(s) — données agrégées de toute la plateforme`
+    : `un expert parieur`
+  const label = nbUtilisateurs ? 'de la communauté' : "de l'expert"
+
+  return `
 Tu es un assistant d'analyse de paris sportifs expert.
-Tu analyses si un match à venir correspond aux patterns gagnants d'un expert parieur.
+Tu analyses si un match à venir correspond aux patterns gagnants de ${source}.
 
-Voici les paris GAGNANTS de l'expert (les plus représentatifs) :
-${JSON.stringify(parisGagnants.slice(0, 20), null, 2)}
+Voici les paris GAGNANTS ${label} (les plus représentatifs, triés par confiance) :
+${JSON.stringify(parisGagnants.slice(0, 30), null, 2)}
 
-Statistiques clés de l'expert :
+Statistiques clés ${label} (calculées sur toute la base) :
 - Sport le plus rentable : ${stats.meileurSport} (ROI: ${stats.roiMeileurSport}%)
 - Type de pari optimal : ${stats.meilleurTypePari}
 - Tags les plus rentables : ${stats.meilleursTags.join(', ')}
@@ -21,6 +27,7 @@ Statistiques clés de l'expert :
 
 Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks, sans texte avant ou après.
 `
+}
 
 const construirePromptUtilisateur = (match) => `
 Analyse ce match à venir :
@@ -53,13 +60,18 @@ Réponds UNIQUEMENT avec ce JSON (sans markdown, sans texte autour) :
 }
 `
 
-const construirePromptCoteAnomale = (match, anomalie, parisGagnants, stats) => `
+const construirePromptCoteAnomale = (match, anomalie, parisGagnants, stats, nbUtilisateurs = null) => {
+  const source = nbUtilisateurs
+    ? `de la communauté (${nbUtilisateurs} parieur(s) — données agrégées)`
+    : `de l'expert`
+
+  return `
 Tu es un assistant d'analyse de paris sportifs expert, spécialisé dans la détection de valeur (value betting).
 
-Patterns gagnants de l'expert (${parisGagnants.length} paris) :
-${JSON.stringify(parisGagnants.slice(0, 15), null, 2)}
+Patterns gagnants ${source} (${parisGagnants.length} paris) :
+${JSON.stringify(parisGagnants.slice(0, 20), null, 2)}
 
-Statistiques expert : sport=${stats.meileurSport} | type=${stats.meilleurTypePari} | tranche cote=${stats.meilleureTrancheCote} | win rate haute confiance=${stats.tauxReussiteHauteConfiance}%
+Statistiques ${source} : sport=${stats.meileurSport} | type=${stats.meilleurTypePari} | tranche cote=${stats.meilleureTrancheCote} | win rate haute confiance=${stats.tauxReussiteHauteConfiance}%
 
 ANOMALIE DE MARCHÉ DÉTECTÉE
 Match : ${match.rencontre} (${match.competition}) — ${match.sport}
@@ -96,8 +108,9 @@ Réponds UNIQUEMENT avec ce JSON (sans markdown, sans texte autour) :
   "raison_anomalie_probable": "genuine_value | erreur_bookmaker | blessure_non_integree | equipe_b | autre"
 }
 `
+}
 
-export const analyserCoteAnomale = async (match, anomalie, parisGagnants, stats) => {
+export const analyserCoteAnomale = async (match, anomalie, parisGagnants, stats, nbUtilisateurs = null) => {
   try {
     const message = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
@@ -105,7 +118,7 @@ export const analyserCoteAnomale = async (match, anomalie, parisGagnants, stats)
       messages: [
         {
           role: 'user',
-          content: construirePromptCoteAnomale(match, anomalie, parisGagnants, stats),
+          content: construirePromptCoteAnomale(match, anomalie, parisGagnants, stats, nbUtilisateurs),
         }
       ],
     })
@@ -124,12 +137,12 @@ export const analyserCoteAnomale = async (match, anomalie, parisGagnants, stats)
   }
 }
 
-export const analyserMatch = async (match, parisGagnants, stats) => {
+export const analyserMatch = async (match, parisGagnants, stats, nbUtilisateurs = null) => {
   try {
     const message = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1000,
-      system: construirePromptSysteme(parisGagnants, stats),
+      system: construirePromptSysteme(parisGagnants, stats, nbUtilisateurs),
       messages: [
         { role: 'user', content: construirePromptUtilisateur(match) }
       ],
