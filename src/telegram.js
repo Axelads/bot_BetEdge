@@ -31,7 +31,7 @@ const formaterMessage = (alerte) => {
   })
 
   const tags = (alerte.tags_detectes ?? []).map(t => `\\#${echapperMarkdown(t)}`).join(' ')
-  const cote = alerte.cote_marche ? `~${echapperMarkdown(alerte.cote_marche)}` : 'à vérifier'
+  const cote = alerte.cote_marche ? echapperMarkdown(alerte.cote_marche) : 'à vérifier'
   const confiance = CONFIANCE_LABEL[alerte.confiance] ?? '🟡 Moyenne'
 
   return `🎯 *BetEdge — Opportunité détectée*
