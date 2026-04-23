@@ -125,8 +125,8 @@ const analyserPourUtilisateur = async (profil, matchsAVenir) => {
 
   console.log(`[bot] ${parisGagnants.length} paris gagnants | ${tousParis.length} paris terminés`)
 
-  if (parisGagnants.length < 3) {
-    console.log(`[bot] Pas assez de paris gagnants (minimum 3). Passage au suivant.`)
+  if (parisGagnants.length < 2) {
+    console.log(`[bot] Pas assez de paris gagnants (minimum 2). Passage au suivant.`)
     return 0
   }
 

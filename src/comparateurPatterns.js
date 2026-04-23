@@ -109,7 +109,7 @@ export const calculerStats = (paris) => {
 export const doitEnvoyerAlerte = (analyse) => {
   return (
     analyse !== null &&
-    analyse.score_similarite >= 70 &&
+    analyse.score_similarite >= 60 &&
     analyse.confiance !== 'faible' &&
     analyse.envoyer_alerte === true
   )

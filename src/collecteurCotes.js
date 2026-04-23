@@ -4,15 +4,20 @@ dotenv.config()
 
 // Sports surveillés sur OddsAPI
 const SPORTS_SURVEILLES = [
-  { cle: 'soccer_france_ligue1',          label: 'Ligue 1' },
-  { cle: 'soccer_epl',                    label: 'Premier League' },
-  { cle: 'soccer_spain_la_liga',          label: 'La Liga' },
-  { cle: 'soccer_germany_bundesliga',     label: 'Bundesliga' },
-  { cle: 'soccer_italy_serie_a',          label: 'Serie A' },
-  { cle: 'soccer_uefa_champs_league',     label: 'Ligue des Champions' },
-  { cle: 'soccer_uefa_europa_league',     label: 'Ligue Europa' },
-  { cle: 'basketball_nba',               label: 'NBA' },
-  { cle: 'basketball_euroleague',         label: 'Euroleague' },
+  { cle: 'soccer_france_ligue1',                    label: 'Ligue 1' },
+  { cle: 'soccer_france_coupe_de_france',            label: 'Coupe de France' },
+  { cle: 'soccer_france_ligue_2',                    label: 'Ligue 2' },
+  { cle: 'soccer_epl',                              label: 'Premier League' },
+  { cle: 'soccer_england_fa_cup',                    label: 'FA Cup' },
+  { cle: 'soccer_england_efl_champ',                 label: 'Championship' },
+  { cle: 'soccer_spain_la_liga',                    label: 'La Liga' },
+  { cle: 'soccer_germany_bundesliga',               label: 'Bundesliga' },
+  { cle: 'soccer_italy_serie_a',                    label: 'Serie A' },
+  { cle: 'soccer_uefa_champs_league',               label: 'Ligue des Champions' },
+  { cle: 'soccer_uefa_europa_league',               label: 'Ligue Europa' },
+  { cle: 'soccer_uefa_europa_conference_league',     label: 'Conference League' },
+  { cle: 'basketball_nba',                          label: 'NBA' },
+  { cle: 'basketball_euroleague',                    label: 'Euroleague' },
 ]
 
 const recupererMatchsSport = async (sport) => {
