@@ -35,6 +35,12 @@ const recupererMatchsSport = async (sport) => {
       throw new Error(`HTTP ${reponse.status}`)
     }
 
+    const restantes = reponse.headers.get('x-requests-remaining')
+    const utilisees  = reponse.headers.get('x-requests-used')
+    if (restantes !== null) {
+      console.log(`[collecteur] OddsAPI — ${restantes} requêtes restantes ce mois (${utilisees} utilisées)`)
+    }
+
     const donnees = await reponse.json()
     return donnees
   } catch (erreur) {

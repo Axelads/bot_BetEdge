@@ -393,10 +393,14 @@ await envoyerMessageDemarrage()
 // Lancer une première analyse immédiatement au démarrage
 await lancerAnalyse()
 
-// Puis toutes les heures de 8h à 23h
-// '0 8-23 * * *' = à l'heure pile, de 8h00 à 23h00
-cron.schedule('0 8-23 * * *', () => {
+// 2 cycles/jour : 9h et 18h heure Paris (UTC+2 en été → 7h et 16h UTC)
+// 14 sports × 2 × 30 jours = 840 req/mois → nécessite plan payant OddsAPI (>500/mois free)
+// Si plan free uniquement : commenter le 2ème cron → 14 × 30 = 420/mois
+cron.schedule('0 7 * * *', () => {   // 9h Paris
+  lancerAnalyse()
+})
+cron.schedule('0 16 * * *', () => {  // 18h Paris
   lancerAnalyse()
 })
 
-console.log('[bot] Cron actif — analyse toutes les heures de 8h à 23h')
+console.log('[bot] Cron actif — analyse à 9h et 18h (heure Paris) | 840 req OddsAPI/mois')
