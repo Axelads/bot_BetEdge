@@ -47,7 +47,7 @@ Avant tout appel Claude, les matchs dont aucune cote n'est dans la plage histori
 
 **Impact cumulé : ~−72% sur le coût Claude.**
 
-## Compétitions surveillées (43)
+## Compétitions surveillées (48)
 
 Chaque compétition définit sa fenêtre de saison (format MMJJ). Les compétitions hors saison sont **ignorées sans appel réseau**, ce qui réduit la consommation OddsAPI de ~65%.
 
@@ -129,11 +129,11 @@ Chaque compétition définit sa fenêtre de saison (format MMJJ). Les compétiti
 
 ### Rugby
 
-| Compétition | Saison active |
-|------------|--------------|
-| Top 14 | 25 août → 20 juin |
-| 6 Nations + Autumn Tests | 25 jan→27 mar · 26 oct→12 déc |
-| Champions Cup | 28 nov → 28 mai |
+| Compétition | Saison active | Note |
+|------------|--------------|------|
+| Top 14 | 25 août → 20 juin | |
+| 6 Nations + Autumn Tests | 25 jan→27 mar · 26 oct→12 déc | |
+| Champions Cup | 28 nov → 28 mai | |
 | Coupe du Monde Rugby | 25 août → 5 nov | **2027** uniquement |
 
 ### Hockey sur glace
