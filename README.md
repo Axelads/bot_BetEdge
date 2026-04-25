@@ -9,7 +9,7 @@ bot/
 ├── src/
 │   ├── index.js               # Entry point — crons + orchestration multi-utilisateurs
 │   ├── analyseur.js           # Appels Claude API (prompt caching + batch)
-│   ├── collecteurCotes.js     # Récupération matchs/cotes (OddsAPI, 43 compétitions)
+│   ├── collecteurCotes.js     # Récupération matchs/cotes (OddsAPI, 48 compétitions)
 │   ├── comparateurPatterns.js # Stats Expert + seuils de déclenchement
 │   ├── detecteurAnomalie.js   # Détection de cotes anormales (mathématique, sans API)
 │   └── telegram.js            # Envoi des alertes Telegram (parse_mode HTML)
@@ -56,13 +56,21 @@ Chaque compétition définit sa fenêtre de saison (format MMJJ). Les compétiti
 | Compétition | Saison active |
 |------------|--------------|
 | Ligue 1 | 10 août → 22 mai |
-| Coupe de France | 20 juil → 22 mai |
 | Premier League | 7 août → 24 mai |
-| FA Cup | 28 juil → 22 mai |
 | Championship (EFL) | 5 août → 10 mai |
 | La Liga | 10 août → 30 mai |
 | Bundesliga | 18 août → 22 mai |
 | Serie A | 12 août → 30 mai |
+
+### Football — Coupes nationales (à partir des 8èmes de finale)
+
+| Compétition | Fenêtre (8ème → finale) |
+|------------|------------------------|
+| Coupe de France | 1er jan → 25 mai |
+| FA Cup (Angleterre) | 1er fév → 20 mai |
+| Copa del Rey (Espagne) | 8 jan → 12 mai |
+| DFB Pokal (Allemagne) | 28 jan → 25 mai |
+| Coppa Italia (Italie) | 8 jan → 28 mai |
 
 ### Football — Compétitions européennes
 
@@ -139,7 +147,7 @@ Chaque compétition définit sa fenêtre de saison (format MMJJ). Les compétiti
 
 | Scénario | Req/mois |
 |---------|---------|
-| Sans filtrage saison (43 sports × 2 cycles × 30j) | ~2 580 |
+| Sans filtrage saison (48 sports × 2 cycles × 30j) | ~2 880 |
 | **Avec filtrage (12–15 actifs en moyenne)** | **~720–900** |
 
 Le filtrage par saison économise environ **~1 700 req/mois** par rapport à un appel systématique.

@@ -11,13 +11,17 @@ dotenv.config()
 const SPORTS_SURVEILLES = [
   // ── Football — Ligues nationales ──────────────────────────────────────────
   { cle: 'soccer_france_ligue1',                    label: 'Ligue 1',              debut: 810,  fin: 522 },
-  { cle: 'soccer_france_coupe_de_france',           label: 'Coupe de France',      debut: 720,  fin: 522 },
   { cle: 'soccer_epl',                              label: 'Premier League',        debut: 807,  fin: 524 },
-  { cle: 'soccer_england_fa_cup',                   label: 'FA Cup',               debut: 728,  fin: 522 },
   { cle: 'soccer_england_efl_champ',                label: 'Championship',          debut: 805,  fin: 510 },
   { cle: 'soccer_spain_la_liga',                    label: 'La Liga',              debut: 810,  fin: 530 },
   { cle: 'soccer_germany_bundesliga',               label: 'Bundesliga',            debut: 818,  fin: 522 },
   { cle: 'soccer_italy_serie_a',                    label: 'Serie A',              debut: 812,  fin: 530 },
+  // ── Football — Coupes nationales (à partir des 8èmes de finale) ───────────
+  { cle: 'soccer_france_coupe_de_france',           label: 'Coupe de France',      debut: 101,  fin: 525 },
+  { cle: 'soccer_england_fa_cup',                   label: 'FA Cup',               debut: 201,  fin: 520 },
+  { cle: 'soccer_spain_copa_del_rey',               label: 'Copa del Rey',          debut: 108,  fin: 512 },
+  { cle: 'soccer_germany_dfb_pokal',                label: 'DFB Pokal',             debut: 128,  fin: 525 },
+  { cle: 'soccer_italy_coppa_italia',               label: 'Coppa Italia',          debut: 108,  fin: 528 },
   // ── Football — Compétitions européennes (pause mi-déc → mi-jan) ──────────
   { cle: 'soccer_uefa_champs_league',            label: 'Ligue des Champions',
     periodes: [{ debut: 825, fin: 1212 }, { debut: 118, fin: 605 }] },
