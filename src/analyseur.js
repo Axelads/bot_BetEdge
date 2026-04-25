@@ -47,6 +47,56 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks, sans texte av
 
 // ─── Prompts utilisateur (par match — non cacheables) ─────────────────────────
 
+const construireContexteApiFootball = (match) => {
+  const ctx = match.contexte_api_football
+  if (!ctx) return ''
+
+  const lignes = ['\nDonnées de contexte (source API-Football) :']
+
+  if (ctx.journee) {
+    lignes.push(`- Journée : ${ctx.journee}`)
+  }
+
+  // Face-à-face
+  if (ctx.forme_domicile_h2h) {
+    lignes.push(`- Forme ${match.equipe_domicile} en H2H (5 derniers) : ${ctx.forme_domicile_h2h} (V=victoire D=défaite N=nul, plus récent en premier)`)
+  }
+  if (ctx.forme_exterieur_h2h) {
+    lignes.push(`- Forme ${match.equipe_exterieur} en H2H (5 derniers) : ${ctx.forme_exterieur_h2h}`)
+  }
+  if (ctx.h2h_5_derniers && ctx.h2h_5_derniers.length > 0) {
+    lignes.push(`- Historique H2H (${ctx.h2h_5_derniers.length} derniers) :`)
+    ctx.h2h_5_derniers.forEach(r => lignes.push(`  • ${r}`))
+  }
+
+  // Blessures / absences
+  if (ctx.blessures_domicile && ctx.blessures_domicile.length > 0) {
+    lignes.push(`- Absents ${match.equipe_domicile} : ${ctx.blessures_domicile.join(', ')}`)
+  } else if (ctx.blessures_domicile) {
+    lignes.push(`- Absents ${match.equipe_domicile} : aucun signalé`)
+  }
+  if (ctx.blessures_exterieur && ctx.blessures_exterieur.length > 0) {
+    lignes.push(`- Absents ${match.equipe_exterieur} : ${ctx.blessures_exterieur.join(', ')}`)
+  } else if (ctx.blessures_exterieur) {
+    lignes.push(`- Absents ${match.equipe_exterieur} : aucun signalé`)
+  }
+
+  // Prédiction API-Football
+  if (ctx.prediction_api) {
+    const pred = ctx.prediction_api
+    if (pred.conseil) lignes.push(`- Conseil API-Football : ${pred.conseil}`)
+    if (pred.probabilites) {
+      const p = pred.probabilites
+      lignes.push(`- Probabilités statistiques : domicile ${p.home} | nul ${p.draw} | extérieur ${p.away}`)
+    }
+    if (pred.comparaison_forme) {
+      lignes.push(`- Comparaison de forme : domicile ${pred.comparaison_forme.home} vs extérieur ${pred.comparaison_forme.away}`)
+    }
+  }
+
+  return lignes.join('\n')
+}
+
 const construirePromptUtilisateur = (match) => `Analyse ce match à venir :
 
 Rencontre : ${match.rencontre}
@@ -60,7 +110,7 @@ Cotes actuelles sur le marché :
 - Victoire extérieur : ${match.cotes.exterieur ?? 'N/A'}
 - Plus de 2.5 buts : ${match.cotes.over25 ?? 'N/A'}
 - Moins de 2.5 buts : ${match.cotes.under25 ?? 'N/A'}
-
+${construireContexteApiFootball(match)}
 Est-ce que ce match correspond aux patterns gagnants de l'expert ?
 
 Réponds UNIQUEMENT avec ce JSON (sans markdown, sans texte autour) :
@@ -94,6 +144,7 @@ Cotes H2H du match :
 - Extérieur : ${match.cotes.exterieur ?? 'N/A'}
 - Over 2.5 : ${match.cotes.over25 ?? 'N/A'}
 - Under 2.5 : ${match.cotes.under25 ?? 'N/A'}
+${construireContexteApiFootball(match)}
 
 QUESTION : Cette cote anormale est-elle une vraie opportunité de value bet, ou existe-t-il une raison valable (blessure majeure récente, suspension, erreur de ligne bookmaker, équipe B alignée) ?
 Est-elle cohérente avec les patterns de l'expert ?

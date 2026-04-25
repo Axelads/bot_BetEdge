@@ -7,6 +7,7 @@ import dotenv from 'dotenv'
 dotenv.config()
 
 import { recupererMatchsAVenir } from './collecteurCotes.js'
+import { enrichirMatchsFootball } from './enrichisseurApiFootball.js'
 import {
   analyserMatch, analyserCoteAnomale,
   construirePromptSysteme, construirePromptSystemeAnomalie,
@@ -413,6 +414,9 @@ const lancerAnalyse = async () => {
       return
     }
 
+    // Enrichissement API-Football (forme + H2H) sur les matchs football retenus
+    await enrichirMatchsFootball(matchsFiltres)
+
     let nbAlertesTotal = 0
     for (const profil of utilisateurs) {
       const estAdmin = profil.user === ID_SUPERUSER
@@ -456,6 +460,9 @@ const lancerAnalyseBatch = async () => {
       console.log('[bot] Aucun match dans la plage de cotes ciblée.')
       return
     }
+
+    // Enrichissement API-Football (forme + H2H) — mutualisé entre tous les utilisateurs
+    await enrichirMatchsFootball(matchsFiltres)
 
     const toutesRequetes = []
     const contexte = {}
