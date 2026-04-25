@@ -9,7 +9,7 @@ bot/
 ├── src/
 │   ├── index.js               # Entry point — crons + orchestration multi-utilisateurs
 │   ├── analyseur.js           # Appels Claude API (prompt caching + batch)
-│   ├── collecteurCotes.js     # Récupération matchs/cotes (OddsAPI, 29 compétitions)
+│   ├── collecteurCotes.js     # Récupération matchs/cotes (OddsAPI, 43 compétitions)
 │   ├── comparateurPatterns.js # Stats Expert + seuils de déclenchement
 │   ├── detecteurAnomalie.js   # Détection de cotes anormales (mathématique, sans API)
 │   └── telegram.js            # Envoi des alertes Telegram (parse_mode HTML)
@@ -47,9 +47,9 @@ Avant tout appel Claude, les matchs dont aucune cote n'est dans la plage histori
 
 **Impact cumulé : ~−72% sur le coût Claude.**
 
-## Compétitions surveillées (29)
+## Compétitions surveillées (43)
 
-Chaque compétition définit sa fenêtre de saison (format MMJJ). Les compétitions hors saison sont **ignorées sans appel réseau**, ce qui réduit la consommation OddsAPI de ~58%.
+Chaque compétition définit sa fenêtre de saison (format MMJJ). Les compétitions hors saison sont **ignorées sans appel réseau**, ce qui réduit la consommation OddsAPI de ~65%.
 
 ### Football — Ligues nationales
 
@@ -139,10 +139,10 @@ Chaque compétition définit sa fenêtre de saison (format MMJJ). Les compétiti
 
 | Scénario | Req/mois |
 |---------|---------|
-| Sans filtrage saison (29 sports × 2 cycles × 30j) | ~1 740 |
+| Sans filtrage saison (43 sports × 2 cycles × 30j) | ~2 580 |
 | **Avec filtrage (12–15 actifs en moyenne)** | **~720–900** |
 
-Le filtrage par saison économise environ **~900 req/mois** par rapport à un appel systématique.
+Le filtrage par saison économise environ **~1 700 req/mois** par rapport à un appel systématique.
 Plan Basic OddsAPI requis ($39,99/mois, 10 000 req/mois).
 
 ## Mode superadmin
