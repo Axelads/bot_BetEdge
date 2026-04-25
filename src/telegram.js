@@ -23,6 +23,53 @@ const CONFIANCE_LABEL = {
   faible:  '🔴 Faible',
 }
 
+// Construit un libellé explicite sans ambiguïté à partir du type et de la valeur du pari
+const labelliserPari = (typePari, valeurPari) => {
+  const v = echapperHtml(valeurPari ?? '')
+  switch (typePari) {
+    case 'plus_de':
+      return `Plus de ${v} buts dans le match (total des deux équipes)`
+    case 'moins_de':
+      return `Moins de ${v} buts dans le match (total des deux équipes)`
+    case 'victoire_domicile':
+      return `Victoire à domicile${v ? ` — ${v}` : ''}`
+    case 'victoire_exterieur':
+      return `Victoire à l'extérieur${v ? ` — ${v}` : ''}`
+    case 'nul':
+      return `Match nul`
+    case 'les_deux_marquent':
+      return `Les deux équipes marquent au moins un but`
+    case 'double_chance':
+      return `Double chance${v ? ` (${v})` : ''}`
+    case 'handicap':
+      return `Handicap${v ? ` — ${v}` : ''}`
+    case 'score_exact':
+      return `Score exact${v ? ` — ${v}` : ''}`
+    case 'buteur_a_tout_moment':
+      return `Buteur à tout moment${v ? ` — ${v}` : ''}`
+    case 'premier_buteur':
+      return `Premier buteur${v ? ` — ${v}` : ''}`
+    case 'dernier_buteur':
+      return `Dernier buteur${v ? ` — ${v}` : ''}`
+    case 'mi_temps_resultat':
+      return `Résultat à la mi-temps${v ? ` — ${v}` : ''}`
+    case 'mi_temps_final':
+      return `Mi-temps / Final${v ? ` — ${v}` : ''}`
+    case 'nombre_corners':
+      return `Corners${v ? ` — ${v}` : ''}`
+    case 'nombre_cartons':
+      return `Cartons${v ? ` — ${v}` : ''}`
+    case 'qualification':
+      return `Qualification${v ? ` — ${v}` : ''}`
+    case 'vainqueur_tournoi':
+      return `Vainqueur du tournoi${v ? ` — ${v}` : ''}`
+    case 'combiné':
+      return `Combiné${v ? ` — ${v}` : ''}`
+    default:
+      return v || echapperHtml(typePari ?? '') || 'Voir détails'
+  }
+}
+
 const formaterMessage = (alerte) => {
   const emoji = EMOJI_SPORT[alerte.sport] ?? '🏆'
   const date = new Date(alerte.date_match).toLocaleString('fr-FR', {
@@ -36,13 +83,14 @@ const formaterMessage = (alerte) => {
   const tags = (alerte.tags_detectes ?? []).map(t => `#${echapperHtml(t)}`).join(' ')
   const cote = alerte.cote_marche ? echapperHtml(alerte.cote_marche) : 'à vérifier'
   const confiance = CONFIANCE_LABEL[alerte.confiance] ?? '🟡 Moyenne'
+  const libellePari = labelliserPari(alerte.type_pari, alerte.valeur_pari)
 
   return `🎯 <b>BetEdge — Opportunité détectée</b>
 
 ${emoji} <b>${echapperHtml(alerte.rencontre)}</b> — ${echapperHtml(alerte.competition)}
 📅 ${echapperHtml(date)}
 
-💡 <b>Pari suggéré :</b> ${echapperHtml(alerte.valeur_pari)}
+💡 <b>Pari suggéré :</b> ${libellePari}
 💰 <b>Cote sur le marché :</b> ${cote}
 
 📊 Similarité avec tes patterns : <b>${echapperHtml(alerte.score_similarite)}/100</b>
@@ -69,6 +117,7 @@ const formaterMessageAnomalie = (alerte) => {
   const bookmaker = alerte.bookmaker_anomalie ? echapperHtml(alerte.bookmaker_anomalie) : 'un bookmaker'
   const coteMediane = alerte.cote_mediane ? echapperHtml(alerte.cote_mediane) : '?'
   const confiance = CONFIANCE_LABEL[alerte.confiance] ?? '🟡 Moyenne'
+  const libellePari = labelliserPari(alerte.type_pari, alerte.valeur_pari)
 
   return `⚡ <b>BetEdge — Cote Anormale Détectée</b>
 
@@ -78,7 +127,7 @@ ${emoji} <b>${echapperHtml(alerte.rencontre)}</b> — ${echapperHtml(alerte.comp
 🔍 <b>Anomalie de marché :</b>
 "${echapperHtml(alerte.outcome_anomalie)}" → médiane ${coteMediane} → trouvée à <b>${echapperHtml(alerte.cote_marche)}</b> sur ${bookmaker} (${ecart})
 
-💡 <b>Pari suggéré :</b> ${echapperHtml(alerte.valeur_pari)}
+💡 <b>Pari suggéré :</b> ${libellePari}
 💰 <b>Cote disponible :</b> ${echapperHtml(alerte.cote_marche)} vs marché à ${coteMediane}
 
 📊 Score de valeur : <b>${echapperHtml(alerte.score_valeur)}/100</b> | Anomalie : ${ecart}

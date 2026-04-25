@@ -49,9 +49,9 @@ Est-ce que ce match correspond aux patterns gagnants de l'expert ?
 Réponds UNIQUEMENT avec ce JSON (sans markdown, sans texte autour) :
 {
   "score_similarite": nombre entre 0 et 100,
-  "pari_recommande": "description courte du pari suggéré",
-  "type_pari_recommande": "un des types: victoire_domicile | victoire_exterieur | nul | plus_de | moins_de | les_deux_marquent",
-  "valeur_pari": "valeur précise ex: 2.5 pour over/under, ou nom équipe pour victoire",
+  "pari_recommande": "description complète et sans ambiguïté — précise toujours le périmètre exact (ex: 'Plus de 2.5 buts au total dans le match entre les deux équipes', 'Victoire Liverpool à domicile', 'Les deux équipes marquent au moins un but')",
+  "type_pari_recommande": "un des types: victoire_domicile | victoire_exterieur | nul | plus_de | moins_de | les_deux_marquent | double_chance | handicap | score_exact | buteur_a_tout_moment | premier_buteur | nombre_corners | nombre_cartons | qualification | vainqueur_tournoi | combiné",
+  "valeur_pari": "valeur brute uniquement — ex: '2.5' pour over/under, 'Liverpool' pour victoire domicile, 'oui' pour BTTS, '1X' pour double chance (ne pas répéter le type ici)",
   "cote_suggeree": nombre (la cote correspondante parmi celles fournies),
   "tags_correspondants": ["tag1", "tag2"],
   "raisonnement": "2-3 phrases maximum expliquant pourquoi ce match correspond",
@@ -98,9 +98,9 @@ Réponds UNIQUEMENT avec ce JSON (sans markdown, sans texte autour) :
 {
   "est_opportunite_reelle": true ou false,
   "score_valeur": nombre entre 0 et 100,
-  "pari_recommande": "description courte du pari suggéré",
-  "type_pari_recommande": "victoire_domicile | victoire_exterieur | nul | plus_de | moins_de | les_deux_marquent",
-  "valeur_pari": "valeur précise ex: équipe, 2.5, oui",
+  "pari_recommande": "description complète et sans ambiguïté — précise toujours le périmètre exact (ex: 'Plus de 2.5 buts au total dans le match entre les deux équipes', 'Victoire Real Madrid à domicile', 'Les deux équipes marquent au moins un but')",
+  "type_pari_recommande": "victoire_domicile | victoire_exterieur | nul | plus_de | moins_de | les_deux_marquent | double_chance | handicap | score_exact | buteur_a_tout_moment | premier_buteur | nombre_corners | qualification | vainqueur_tournoi | combiné",
+  "valeur_pari": "valeur brute uniquement — ex: '2.5' pour over/under, 'Real Madrid' pour victoire, 'oui' pour BTTS (ne pas répéter le type ici)",
   "cote_recommandee": nombre (la cote anormale trouvée),
   "tags_correspondants": ["tag1", "tag2"],
   "raisonnement": "2-3 phrases expliquant l'opportunité ou la raison de la fausse alerte",
