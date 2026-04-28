@@ -101,6 +101,53 @@ const formaterBlessures = (injuries, teamId) => {
     })
 }
 
+// Formate les statistiques d'un match H2H complété (possession, tirs, corners)
+const formaterStatistiquesH2H = (statsData, fixture) => {
+  if (!statsData || statsData.length < 2) return null
+
+  const extraire = (statistiques, type) => {
+    const stat = statistiques.find(s => s.type === type)
+    return stat?.value ?? null
+  }
+
+  const domData = statsData[0]
+  const extData = statsData[1]
+  const score = `${fixture.goals.home ?? '?'}-${fixture.goals.away ?? '?'}`
+  const date  = fixture.fixture.date.slice(0, 10)
+
+  return {
+    match_ref:   `${domData.team.name} ${score} ${extData.team.name} (${date})`,
+    possession:  {
+      domicile:  extraire(domData.statistics, 'Ball Possession'),
+      exterieur: extraire(extData.statistics, 'Ball Possession'),
+    },
+    tirs_cadres: {
+      domicile:  extraire(domData.statistics, 'Shots on Goal'),
+      exterieur: extraire(extData.statistics, 'Shots on Goal'),
+    },
+    tirs_total:  {
+      domicile:  extraire(domData.statistics, 'Total Shots'),
+      exterieur: extraire(extData.statistics, 'Total Shots'),
+    },
+    corners:     {
+      domicile:  extraire(domData.statistics, 'Corner Kicks'),
+      exterieur: extraire(extData.statistics, 'Corner Kicks'),
+    },
+  }
+}
+
+// Formate les compositions officielles (disponibles 20-40 min avant le coup d'envoi)
+const formaterLineup = (lineupData) => {
+  if (!lineupData || lineupData.length === 0) return null
+
+  return lineupData.map(equipe => ({
+    equipe:     equipe.team.name,
+    formation:  equipe.formation ?? null,
+    titulaires: (equipe.startXI ?? []).map(p => `${p.player.name} (${p.player.pos})`),
+    coach:      equipe.coach?.name ?? null,
+  }))
+}
+
 // Formate la prédiction de l'API en objet lisible pour Claude
 const formaterPrediction = (pred) => {
   const p = pred.predictions
@@ -115,8 +162,8 @@ const formaterPrediction = (pred) => {
 }
 
 // Enrichit tous les matchs football de la liste avec données API-Football
-// Stratégie quota : 1 appel pour TOUS les matchs du jour + 1 H2H par match
-// = max ~9 appels/cycle × 2 cycles = ~18 appels/jour (sur 100 disponibles)
+// Stratégie quota : 1 appel fixtures/date + 5 appels par match (H2H, injuries, predictions, lineups, stats H2H)
+// = max ~41 appels/cycle × 2 cycles = ~82 appels/jour (sous les 100 du plan gratuit)
 export const enrichirMatchsFootball = async (matchs) => {
   const matchsFootball = matchs.filter(m => m.sport === 'football')
 
@@ -173,12 +220,19 @@ export const enrichirMatchsFootball = async (matchs) => {
       const idExterieur = fixture.teams.away.id
       const fixtureId   = fixture.fixture.id
 
-      // 3 appels en parallèle — tous sans restriction season sur plan gratuit
-      const [h2hData, blessuresData, predictionData] = await Promise.all([
+      // 4 appels en parallèle — lineups disponibles 20-40 min avant le match
+      const [h2hData, blessuresData, predictionData, lineupData] = await Promise.all([
         appelApiFootball(`/fixtures/headtohead?h2h=${idDomicile}-${idExterieur}`),
         appelApiFootball(`/injuries?fixture=${fixtureId}`),
         appelApiFootball(`/predictions?fixture=${fixtureId}`),
+        appelApiFootball(`/fixtures/lineups?fixture=${fixtureId}`),
       ])
+
+      // Statistiques du dernier H2H — appel séquentiel car on a besoin de l'ID H2H d'abord
+      let statsH2HData = null
+      if (h2hData && h2hData.length > 0) {
+        statsH2HData = await appelApiFootball(`/fixtures/statistics?fixture=${h2hData[0].fixture.id}`)
+      }
 
       const h2hResultats      = h2hData ? formaterH2H(h2hData) : []
       const formeDomicileH2H  = h2hData ? formaterFormeH2H(h2hData, idDomicile) : null
@@ -191,6 +245,12 @@ export const enrichirMatchsFootball = async (matchs) => {
         ? formaterPrediction(predictionData[0])
         : null
 
+      const statsH2H = (statsH2HData && h2hData && h2hData.length > 0)
+        ? formaterStatistiquesH2H(statsH2HData, h2hData[0])
+        : null
+
+      const lineups = formaterLineup(lineupData)
+
       match.contexte_api_football = {
         fixture_id:              fixtureId,
         saison:                  fixture.league.season,
@@ -198,15 +258,19 @@ export const enrichirMatchsFootball = async (matchs) => {
         h2h_5_derniers:          h2hResultats,
         forme_domicile_h2h:      formeDomicileH2H,
         forme_exterieur_h2h:     formeExterieurH2H,
+        stats_dernier_h2h:       statsH2H,
         blessures_domicile:      blessuresDomicile,
         blessures_exterieur:     blessuresExterieur,
         prediction_api:          prediction,
+        lineups:                 lineups,
       }
 
       console.log(
         `[api-football] ✅ ${match.rencontre} — ${fixture.league.round} — ` +
         `H2H: ${h2hResultats.length} | ` +
+        `stats H2H: ${statsH2H ? 'oui' : 'non'} | ` +
         `blessés: ${blessuresDomicile.length}/${blessuresExterieur.length} | ` +
+        `lineups: ${lineups ? 'oui' : 'non'} | ` +
         `prédiction: ${prediction?.conseil ?? 'N/A'}`
       )
     }

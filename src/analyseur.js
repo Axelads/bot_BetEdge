@@ -107,6 +107,18 @@ const construireContexteApiFootball = (match) => {
     lignes.push(`- Absents ${match.equipe_exterieur} : aucun signalé`)
   }
 
+  // Compositions officielles (disponibles 20-40 min avant le coup d'envoi)
+  if (ctx.lineups && ctx.lineups.length > 0) {
+    lignes.push('- Compositions officielles :')
+    for (const equipe of ctx.lineups) {
+      const coach = equipe.coach ? ` — Coach : ${equipe.coach}` : ''
+      lignes.push(`  ${equipe.equipe} (${equipe.formation ?? 'N/A'})${coach}`)
+      if (equipe.titulaires.length > 0) {
+        lignes.push(`    Titulaires : ${equipe.titulaires.join(', ')}`)
+      }
+    }
+  }
+
   // Prédiction API-Football
   if (ctx.prediction_api) {
     const pred = ctx.prediction_api
