@@ -42,8 +42,10 @@ Le prompt système (paris gagnants + stats ≈ 3 600 tokens) est mis en cache 5 
 ### 2. Batch API (cycle 9h)
 Toutes les analyses (tous users × tous matchs) sont soumises en un seul batch Anthropic. **−50% sur input+output.** Fallback automatique sur analyse synchrone si la soumission échoue.
 
-### 3. Pré-filtre des matchs (1,50–3,00, max 8)
-Avant tout appel Claude, les matchs dont aucune cote n'est dans la plage historique de l'Expert sont ignorés. **−33% de calls Claude.**
+### 3. Pré-filtre des matchs (per-user)
+Filtre en deux temps :
+- **Global large** (1,10–20, max 20 matchs) — mutualisé pour l'enrichissement API-Football
+- **Per-user** (plage de cotes selon `profil_risque`, sports sélectionnés, max 8) — appliqué dans la boucle par utilisateur
 
 **Impact cumulé : ~−72% sur le coût Claude.**
 
@@ -153,9 +155,26 @@ Chaque compétition définit sa fenêtre de saison (format MMJJ). Les compétiti
 Le filtrage par saison économise environ **~1 700 req/mois** par rapport à un appel systématique.
 Plan Basic OddsAPI requis ($39,99/mois, 10 000 req/mois).
 
-## Mode superadmin
+## Préférences utilisateur (`preferences_bot` dans PocketBase)
 
-Le compte `ujotze4rf8qhs9k` reçoit une analyse basée sur les données agrégées de **tous les utilisateurs** de la plateforme (au lieu de ses paris uniquement). Le prompt Claude mentionne "communauté de N parieurs — données agrégées".
+Chaque utilisateur peut configurer le bot depuis l'app mobile (onglet Paramètres → "Paramètres du bot"). Les préférences sont lues à chaque cycle depuis le profil PocketBase.
+
+| Champ | Valeurs | Effet sur le bot |
+|-------|---------|-----------------|
+| `sports` | `["football", "tennis", ...]` | Filtre les matchs aux sports sélectionnés |
+| `profil_risque` | `securite` / `equilibre` / `risque` / `tres_risque` | Plage de cotes : 1.10–1.80 / 1.50–2.50 / 2.00–4.00 / 3.00+ |
+| `types_analyse` | `["patterns"]` / `["anomalies"]` / les deux | Active ou désactive chaque piste d'analyse |
+| `format_pari` | `sec` / `combine` / `les_deux` | Instruction Claude sur le format des suggestions |
+| `source_donnees` | `perso` / `communaute` | Paris de l'utilisateur seul ou données agrégées de toute la plateforme |
+| `consentement_donnees` | toujours `true` | Tous les utilisateurs alimentent le pool commun, quel que soit `source_donnees` |
+
+**Valeurs par défaut** (si non configuré) : tous sports, profil `equilibre`, les deux types, paris secs, source `perso`.
+
+## Mode superadmin / communauté
+
+Le compte `ujotze4rf8qhs9k` utilise toujours les données agrégées (`sourceAgreee = true`).
+Tout utilisateur ayant choisi `source_donnees = "communaute"` bénéficie du même dataset élargi.
+Le prompt Claude mentionne "communauté de N parieurs — données agrégées" dans les deux cas.
 
 ## Variables d'environnement requises (Koyeb)
 

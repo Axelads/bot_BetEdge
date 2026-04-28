@@ -6,11 +6,17 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 // ─── Prompts système (cacheables — même contenu = cache hit sur les appels suivants du cycle) ──
 
-export const construirePromptSysteme = (parisGagnants, stats, nbUtilisateurs = null) => {
+export const construirePromptSysteme = (parisGagnants, stats, nbUtilisateurs = null, options = {}) => {
   const source = nbUtilisateurs
     ? `une communauté de ${nbUtilisateurs} parieur(s) — données agrégées de toute la plateforme`
     : `un expert parieur`
   const label = nbUtilisateurs ? 'de la communauté' : "de l'expert"
+
+  const instructionFormat = options.formatPari === 'combine'
+    ? 'Préfère les suggestions de paris combinés (plusieurs sélections cohérentes en un même message).'
+    : options.formatPari === 'les_deux'
+    ? 'Tu peux proposer des paris secs ou des combinés selon l\'opportunité détectée.'
+    : 'Propose uniquement des paris secs (une seule sélection par alerte).'
 
   return `Tu es un assistant d'analyse de paris sportifs expert.
 Tu analyses si un match à venir correspond aux patterns gagnants de ${source}.
@@ -25,6 +31,8 @@ Statistiques clés ${label} (calculées sur toute la base) :
 - Tranche de cote optimale : ${stats.meilleureTrancheCote}
 - Taux de réussite sur confiance 4-5 : ${stats.tauxReussiteHauteConfiance}%
 - Nombre de paris gagnants analysés : ${parisGagnants.length}
+
+Format de pari souhaité : ${instructionFormat}
 
 Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks, sans texte avant ou après.`
 }
@@ -67,6 +75,24 @@ const construireContexteApiFootball = (match) => {
   if (ctx.h2h_5_derniers && ctx.h2h_5_derniers.length > 0) {
     lignes.push(`- Historique H2H (${ctx.h2h_5_derniers.length} derniers) :`)
     ctx.h2h_5_derniers.forEach(r => lignes.push(`  • ${r}`))
+  }
+
+  // Statistiques du dernier H2H (possession, tirs, corners)
+  if (ctx.stats_dernier_h2h) {
+    const s = ctx.stats_dernier_h2h
+    lignes.push(`- Statistiques du dernier H2H (${s.match_ref}) :`)
+    if (s.possession.domicile) {
+      lignes.push(`  Possession : domicile ${s.possession.domicile} | extérieur ${s.possession.exterieur ?? 'N/A'}`)
+    }
+    if (s.tirs_cadres.domicile !== null) {
+      lignes.push(`  Tirs cadrés : domicile ${s.tirs_cadres.domicile} | extérieur ${s.tirs_cadres.exterieur ?? 'N/A'}`)
+    }
+    if (s.tirs_total.domicile !== null) {
+      lignes.push(`  Tirs total : domicile ${s.tirs_total.domicile} | extérieur ${s.tirs_total.exterieur ?? 'N/A'}`)
+    }
+    if (s.corners.domicile !== null) {
+      lignes.push(`  Corners : domicile ${s.corners.domicile} | extérieur ${s.corners.exterieur ?? 'N/A'}`)
+    }
   }
 
   // Blessures / absences
@@ -173,7 +199,7 @@ export const idSafe = (texte) => texte.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 64
 
 // ─── API synchrone (cycle 18h — temps réel) ───────────────────────────────────
 
-export const analyserMatch = async (match, parisGagnants, stats, nbUtilisateurs = null) => {
+export const analyserMatch = async (match, parisGagnants, stats, nbUtilisateurs = null, options = {}) => {
   try {
     const message = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
@@ -181,7 +207,7 @@ export const analyserMatch = async (match, parisGagnants, stats, nbUtilisateurs 
       system: [
         {
           type: 'text',
-          text: construirePromptSysteme(parisGagnants, stats, nbUtilisateurs),
+          text: construirePromptSysteme(parisGagnants, stats, nbUtilisateurs, options),
           cache_control: { type: 'ephemeral' },
         },
       ],
