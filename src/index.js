@@ -120,7 +120,7 @@ const recupererUtilisateursActifs = async () => {
   )
   if (!reponse.ok) throw new Error(`PocketBase erreur profils: HTTP ${reponse.status}`)
   const data = await reponse.json()
-  return (data.items ?? []).filter(p => p.telegram_chat_id)
+  return (data.items ?? []).filter(p => p.telegram_chat_id && p.est_premium)
 }
 
 const recupererParisGagnantsUtilisateur = async (userId) => {
