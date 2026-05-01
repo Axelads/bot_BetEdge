@@ -97,9 +97,7 @@ ${emoji} <b>${echapperHtml(alerte.rencontre)}</b> — ${echapperHtml(alerte.comp
 🔮 Confiance du bot : <b>${echapperHtml(confiance)}</b>
 ${tags ? `🏷️ ${tags}` : ''}
 
-🤖 <i>${echapperHtml(alerte.raisonnement_bot)}</i>
-
-→ Tu places ? Réponds <b>OUI</b> pour logger ou <b>NON</b> pour ignorer`
+🤖 <i>${echapperHtml(alerte.raisonnement_bot)}</i>`
 }
 
 const formaterMessageAnomalie = (alerte) => {
@@ -134,13 +132,20 @@ ${emoji} <b>${echapperHtml(alerte.rencontre)}</b> — ${echapperHtml(alerte.comp
 🔮 Confiance du bot : <b>${echapperHtml(confiance)}</b>
 ${tags ? `🏷️ ${tags}` : ''}
 
-🤖 <i>${echapperHtml(alerte.raisonnement_bot)}</i>
-
-→ Tu places ? Réponds <b>OUI</b> pour logger ou <b>NON</b> pour ignorer`
+🤖 <i>${echapperHtml(alerte.raisonnement_bot)}</i>`
 }
 
 export const envoyerAlerteAnomalie = async (alerte) => {
   const message = formaterMessageAnomalie(alerte)
+
+  const replyMarkup = alerte.alerteId
+    ? {
+        inline_keyboard: [[
+          { text: '✅ Je place', callback_data: `oui:${alerte.alerteId}` },
+          { text: '❌ Je passe', callback_data: `non:${alerte.alerteId}` },
+        ]],
+      }
+    : undefined
 
   try {
     const reponse = await fetch(
@@ -152,6 +157,7 @@ export const envoyerAlerteAnomalie = async (alerte) => {
           chat_id: alerte.telegramChatId ?? process.env.TELEGRAM_CHAT_ID,
           text: message,
           parse_mode: 'HTML',
+          ...(replyMarkup && { reply_markup: replyMarkup }),
         }),
       }
     )
@@ -174,6 +180,15 @@ export const envoyerAlerteAnomalie = async (alerte) => {
 export const envoyerAlerte = async (alerte) => {
   const message = formaterMessage(alerte)
 
+  const replyMarkup = alerte.alerteId
+    ? {
+        inline_keyboard: [[
+          { text: '✅ Je place', callback_data: `oui:${alerte.alerteId}` },
+          { text: '❌ Je passe', callback_data: `non:${alerte.alerteId}` },
+        ]],
+      }
+    : undefined
+
   try {
     const reponse = await fetch(
       `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`,
@@ -184,6 +199,7 @@ export const envoyerAlerte = async (alerte) => {
           chat_id: alerte.telegramChatId ?? process.env.TELEGRAM_CHAT_ID,
           text: message,
           parse_mode: 'HTML',
+          ...(replyMarkup && { reply_markup: replyMarkup }),
         }),
       }
     )

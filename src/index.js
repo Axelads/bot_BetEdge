@@ -17,6 +17,7 @@ import {
 import { calculerStats, doitEnvoyerAlerte, preparerAlerte, doitEnvoyerAlerteAnomalie, preparerAlerteAnomalie } from './comparateurPatterns.js'
 import { detecterAnomaliesCotes } from './detecteurAnomalie.js'
 import { envoyerAlerte, envoyerAlerteAnomalie, envoyerMessageDemarrage } from './telegram.js'
+import { traiterReponsesTelegram } from './receptionReponses.js'
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
 
@@ -264,7 +265,7 @@ const analyserPourUtilisateur = async (profil, tousMatchsAVenir) => {
         const alerte = { ...preparerAlerte(match, analyse), sport: match.sport, user: userId }
         const alerteSauvegardee = await sauvegarderAlerte(alerte)
         if (alerteSauvegardee) {
-          const envoye = await envoyerAlerte({ ...alerte, telegramChatId, confiance: analyse.confiance })
+          const envoye = await envoyerAlerte({ ...alerte, telegramChatId, confiance: analyse.confiance, alerteId: alerteSauvegardee.id })
           if (envoye) { await marquerAlerteTelegramEnvoyee(alerteSauvegardee.id); nbAlertes++ }
         }
       }
@@ -296,7 +297,7 @@ const analyserPourUtilisateur = async (profil, tousMatchsAVenir) => {
           }
           const alerteSauvegardee = await sauvegarderAlerte(donneesAlertePB)
           if (alerteSauvegardee) {
-            const envoye = await envoyerAlerteAnomalie({ ...alerteAnomalie, telegramChatId })
+            const envoye = await envoyerAlerteAnomalie({ ...alerteAnomalie, telegramChatId, alerteId: alerteSauvegardee.id })
             if (envoye) { await marquerAlerteTelegramEnvoyee(alerteSauvegardee.id); nbAlertes++ }
           }
         }
@@ -511,7 +512,7 @@ const verifierResultatsBatch = async () => {
         const alerteSauvegardee = await sauvegarderAlerte(alerte)
 
         if (alerteSauvegardee) {
-          const envoye = await envoyerAlerte({ ...alerte, telegramChatId, confiance: analyse.confiance })
+          const envoye = await envoyerAlerte({ ...alerte, telegramChatId, confiance: analyse.confiance, alerteId: alerteSauvegardee.id })
           if (envoye) {
             await marquerAlerteTelegramEnvoyee(alerteSauvegardee.id)
             nbAlertes++
@@ -541,7 +542,7 @@ const verifierResultatsBatch = async () => {
         const alerteSauvegardee = await sauvegarderAlerte(donneesAlertePB)
 
         if (alerteSauvegardee) {
-          const envoye = await envoyerAlerteAnomalie({ ...alerteAnomalie, telegramChatId })
+          const envoye = await envoyerAlerteAnomalie({ ...alerteAnomalie, telegramChatId, alerteId: alerteSauvegardee.id })
           if (envoye) {
             await marquerAlerteTelegramEnvoyee(alerteSauvegardee.id)
             nbAlertes++
@@ -582,8 +583,14 @@ cron.schedule('0 16 * * *', () => {
   lancerAnalyse()
 })
 
+// Toutes les 5 min (8h-23h Paris) → lecture des réponses OUI/NON aux alertes Telegram
+cron.schedule('*/5 6-21 * * *', () => {
+  traiterReponsesTelegram()
+})
+
 console.log('[bot] Crons actifs :')
 console.log('  9h00  Paris → batch asynchrone (économique)')
 console.log('  10h30 Paris → vérification résultats batch')
 console.log('  18h00 Paris → analyse synchrone (temps réel)')
+console.log('  */5   Paris (8h-23h) → lecture réponses OUI/NON Telegram')
 console.log('[bot] OddsAPI : 840 req/mois → plan Basic requis ($39,99/mois)')
