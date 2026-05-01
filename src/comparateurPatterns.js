@@ -95,6 +95,20 @@ export const calculerStats = (paris) => {
     ? Math.round((parisHauteConfiance.filter(p => p.statut === 'gagne').length / parisHauteConfiance.length) * 100)
     : 0
 
+  // Tags les plus fréquents dans les paris PERDANTS (patterns à éviter)
+  const parisPerdus = parisTermines.filter(p => p.statut === 'perdu')
+  const comptageTagsPerdants = {}
+  for (const pari of parisPerdus) {
+    const tags = Array.isArray(pari.tags_raisonnement) ? pari.tags_raisonnement : []
+    for (const tag of tags) {
+      comptageTagsPerdants[tag] = (comptageTagsPerdants[tag] ?? 0) + 1
+    }
+  }
+  const tagsPerdants = Object.entries(comptageTagsPerdants)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 4)
+    .map(([tag]) => tag)
+
   return {
     meileurSport,
     roiMeileurSport,
@@ -102,6 +116,7 @@ export const calculerStats = (paris) => {
     meilleursTags,
     meilleureTrancheCote,
     tauxReussiteHauteConfiance,
+    tagsPerdants,
   }
 }
 

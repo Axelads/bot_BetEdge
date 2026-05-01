@@ -6,7 +6,7 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 // ─── Prompts système (cacheables — même contenu = cache hit sur les appels suivants du cycle) ──
 
-export const construirePromptSysteme = (parisGagnants, stats, nbUtilisateurs = null, options = {}) => {
+export const construirePromptSysteme = (parisGagnants, parisPerdants = [], stats, nbUtilisateurs = null, options = {}) => {
   const source = nbUtilisateurs
     ? `une communauté de ${nbUtilisateurs} parieur(s) — données agrégées de toute la plateforme`
     : `un expert parieur`
@@ -18,38 +18,77 @@ export const construirePromptSysteme = (parisGagnants, stats, nbUtilisateurs = n
     ? 'Tu peux proposer des paris secs ou des combinés selon l\'opportunité détectée.'
     : 'Propose uniquement des paris secs (une seule sélection par alerte).'
 
+  // Sélection des champs utiles pour les perdants (éviter d'inflater le prompt)
+  const perdantsSynthese = parisPerdants.slice(0, 15).map(p => ({
+    sport: p.sport,
+    type_pari: p.type_pari,
+    cote: p.cote,
+    confiance: p.confiance,
+    tags_raisonnement: p.tags_raisonnement,
+    raisonnement_libre: p.raisonnement_libre || null,
+  }))
+
+  const sectionPerdants = perdantsSynthese.length > 0
+    ? `\nParis PERDANTS récents ${label} — contextes à NE PAS reproduire (${perdantsSynthese.length} exemples) :
+${JSON.stringify(perdantsSynthese, null, 2)}
+`
+    : ''
+
+  const lignePerdants = stats.tagsPerdants?.length > 0
+    ? `\n- Tags fréquemment associés aux défaites ${label} : ${stats.tagsPerdants.join(', ')} — pénalise les matchs portant ces tags`
+    : ''
+
   return `Tu es un assistant d'analyse de paris sportifs expert.
-Tu analyses si un match à venir correspond aux patterns gagnants de ${source}.
+Tu analyses si un match à venir correspond aux patterns GAGNANTS de ${source}, tout en évitant les patterns PERDANTS identifiés.
 
 Voici les paris GAGNANTS ${label} (les plus représentatifs, triés par confiance) :
-${JSON.stringify(parisGagnants.slice(0, 30), null, 2)}
-
+${JSON.stringify(parisGagnants.slice(0, 25), null, 2)}
+${sectionPerdants}
 Statistiques clés ${label} (calculées sur toute la base) :
 - Sport le plus rentable : ${stats.meileurSport} (ROI: ${stats.roiMeileurSport}%)
 - Type de pari optimal : ${stats.meilleurTypePari}
 - Tags les plus rentables : ${stats.meilleursTags.join(', ')}
 - Tranche de cote optimale : ${stats.meilleureTrancheCote}
 - Taux de réussite sur confiance 4-5 : ${stats.tauxReussiteHauteConfiance}%
-- Nombre de paris gagnants analysés : ${parisGagnants.length}
+- Paris gagnants : ${parisGagnants.length} | Paris perdants : ${parisPerdants.length}${lignePerdants}
 
 Format de pari souhaité : ${instructionFormat}
+
+IMPORTANT : si le match présente plusieurs tags ou un contexte similaire aux paris perdants, baisser le score_similarite et mettre envoyer_alerte à false.
 
 Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks, sans texte avant ou après.`
 }
 
-export const construirePromptSystemeAnomalie = (parisGagnants, stats, nbUtilisateurs = null) => {
+export const construirePromptSystemeAnomalie = (parisGagnants, parisPerdants = [], stats, nbUtilisateurs = null) => {
   const source = nbUtilisateurs
     ? `de la communauté (${nbUtilisateurs} parieur(s) — données agrégées)`
     : `de l'expert`
+
+  const perdantsSynthese = parisPerdants.slice(0, 10).map(p => ({
+    sport: p.sport,
+    type_pari: p.type_pari,
+    cote: p.cote,
+    confiance: p.confiance,
+    tags_raisonnement: p.tags_raisonnement,
+  }))
+
+  const sectionPerdants = perdantsSynthese.length > 0
+    ? `\nContextes perdants ${source} (à éviter) :\n${JSON.stringify(perdantsSynthese, null, 2)}\n`
+    : ''
+
+  const lignePerdants = stats.tagsPerdants?.length > 0
+    ? ` | Tags perdants récurrents : ${stats.tagsPerdants.join(', ')}`
+    : ''
 
   return `Tu es un assistant d'analyse de paris sportifs expert, spécialisé dans la détection de valeur (value betting).
 
 Patterns gagnants ${source} (${parisGagnants.length} paris) :
 ${JSON.stringify(parisGagnants.slice(0, 20), null, 2)}
-
-Statistiques ${source} : sport=${stats.meileurSport} | type=${stats.meilleurTypePari} | tranche cote=${stats.meilleureTrancheCote} | win rate haute confiance=${stats.tauxReussiteHauteConfiance}%
+${sectionPerdants}
+Statistiques ${source} : sport=${stats.meileurSport} | type=${stats.meilleurTypePari} | tranche cote=${stats.meilleureTrancheCote} | win rate haute confiance=${stats.tauxReussiteHauteConfiance}%${lignePerdants}
 
 Tu dois évaluer si une anomalie de cote représente une vraie opportunité de value bet, ou si elle a une explication rationnelle (blessure majeure, suspension, erreur bookmaker, équipe B).
+Si le contexte du match ressemble aux patterns perdants, baisser le score_valeur et mettre est_opportunite_reelle à false.
 Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks, sans texte avant ou après.`
 }
 
@@ -211,7 +250,7 @@ export const idSafe = (texte) => texte.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 64
 
 // ─── API synchrone (cycle 18h — temps réel) ───────────────────────────────────
 
-export const analyserMatch = async (match, parisGagnants, stats, nbUtilisateurs = null, options = {}) => {
+export const analyserMatch = async (match, parisGagnants, parisPerdants = [], stats, nbUtilisateurs = null, options = {}) => {
   try {
     const message = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
@@ -219,7 +258,7 @@ export const analyserMatch = async (match, parisGagnants, stats, nbUtilisateurs 
       system: [
         {
           type: 'text',
-          text: construirePromptSysteme(parisGagnants, stats, nbUtilisateurs, options),
+          text: construirePromptSysteme(parisGagnants, parisPerdants, stats, nbUtilisateurs, options),
           cache_control: { type: 'ephemeral' },
         },
       ],
@@ -233,7 +272,7 @@ export const analyserMatch = async (match, parisGagnants, stats, nbUtilisateurs 
   }
 }
 
-export const analyserCoteAnomale = async (match, anomalie, parisGagnants, stats, nbUtilisateurs = null) => {
+export const analyserCoteAnomale = async (match, anomalie, parisGagnants, parisPerdants = [], stats, nbUtilisateurs = null) => {
   try {
     const message = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
@@ -241,7 +280,7 @@ export const analyserCoteAnomale = async (match, anomalie, parisGagnants, stats,
       system: [
         {
           type: 'text',
-          text: construirePromptSystemeAnomalie(parisGagnants, stats, nbUtilisateurs),
+          text: construirePromptSystemeAnomalie(parisGagnants, parisPerdants, stats, nbUtilisateurs),
           cache_control: { type: 'ephemeral' },
         },
       ],

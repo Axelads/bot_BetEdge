@@ -239,7 +239,9 @@ const analyserPourUtilisateur = async (profil, tousMatchsAVenir) => {
     ? new Set(parisGagnants.map(p => p.user).filter(Boolean)).size
     : null
 
-  console.log(`[bot] ${parisGagnants.length} paris gagnants | ${tousParis.length} paris terminés${nbUtilisateurs ? ` | ${nbUtilisateurs} parieur(s)` : ''}`)
+  const parisPerdants = tousParis.filter(p => p.statut === 'perdu')
+
+  console.log(`[bot] ${parisGagnants.length} paris gagnants | ${parisPerdants.length} perdants | ${tousParis.length} terminés${nbUtilisateurs ? ` | ${nbUtilisateurs} parieur(s)` : ''}`)
 
   if (parisGagnants.length < 2) {
     console.log(`[bot] Pas assez de paris gagnants (minimum 2). Passage au suivant.`)
@@ -254,7 +256,7 @@ const analyserPourUtilisateur = async (profil, tousMatchsAVenir) => {
   for (const match of matchsAVenir) {
     // ── Piste 1 : Pattern matching ──────────────────────────────────────────
     if (analyserPatterns) {
-      const analyse = await analyserMatch(match, parisGagnants, stats, nbUtilisateurs, { formatPari })
+      const analyse = await analyserMatch(match, parisGagnants, parisPerdants, stats, nbUtilisateurs, { formatPari })
 
       if (analyse) {
         console.log(`[bot] ${match.rencontre} → patterns ${analyse.score_similarite}/100 (${analyse.confiance})`)
@@ -278,7 +280,7 @@ const analyserPourUtilisateur = async (profil, tousMatchsAVenir) => {
       if (anomalie) {
         console.log(`[bot] Anomalie ${match.rencontre}: "${anomalie.outcome}" +${anomalie.ecart_pourcent}% vs marché (${anomalie.bookmaker})`)
 
-        const analyseAnomalie = await analyserCoteAnomale(match, anomalie, parisGagnants, stats, nbUtilisateurs)
+        const analyseAnomalie = await analyserCoteAnomale(match, anomalie, parisGagnants, parisPerdants, stats, nbUtilisateurs)
 
         if (analyseAnomalie) {
           console.log(`[bot] ${match.rencontre} → valeur ${analyseAnomalie.score_valeur}/100 (${analyseAnomalie.confiance})`)
@@ -407,11 +409,12 @@ const lancerAnalyseBatch = async () => {
         continue
       }
 
+      const parisPerdants = tousParis.filter(p => p.statut === 'perdu')
       const stats = calculerStats(tousParis)
       const nbUtilisateurs = sourceAgreee ? new Set(parisGagnants.map(p => p.user).filter(Boolean)).size : null
 
-      const promptPattern = construirePromptSysteme(parisGagnants, stats, nbUtilisateurs, { formatPari })
-      const promptAnomalie = construirePromptSystemeAnomalie(parisGagnants, stats, nbUtilisateurs)
+      const promptPattern = construirePromptSysteme(parisGagnants, parisPerdants, stats, nbUtilisateurs, { formatPari })
+      const promptAnomalie = construirePromptSystemeAnomalie(parisGagnants, parisPerdants, stats, nbUtilisateurs)
 
       for (const match of matchsUtilisateur) {
         const { bookmakers_bruts, ...matchSansBrut } = match
