@@ -176,6 +176,21 @@ Le compte `ujotze4rf8qhs9k` utilise toujours les données agrégées (`sourceAgr
 Tout utilisateur ayant choisi `source_donnees = "communaute"` bénéficie du même dataset élargi.
 Le prompt Claude mentionne "communauté de N parieurs — données agrégées" dans les deux cas.
 
+## Gate Premium
+
+Seuls les utilisateurs ayant `est_premium = true` dans leur profil PocketBase reçoivent des alertes Telegram.
+
+Le filtre est appliqué dans `index.js` lors de la récupération des utilisateurs actifs :
+
+```js
+const utilisateursActifs = utilisateurs.filter(p => p.telegram_chat_id && p.est_premium)
+```
+
+Un utilisateur sans abonnement actif ne reçoit aucune alerte, même si le bot détecte une opportunité correspondant à ses patterns.
+
+**Champ PocketBase requis :** collection `profils` → `est_premium` (Bool, default `false`)  
+**Mise à jour :** automatique via `sauvegarderStatutPremium()` dans `app/src/services/pocketbase.js` après achat Apple IAP.
+
 ## Variables d'environnement requises (Koyeb)
 
 ```
