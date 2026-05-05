@@ -563,25 +563,14 @@ const verifierResultatsBatch = async () => {
 // ─── Démarrage ────────────────────────────────────────────────────────────────
 
 console.log('🚀 BetEdge Bot — Démarrage...')
-console.log('[bot] Optimisations actives : prompt caching + batch 9h + pré-filtre cotes 1.50-3.00')
+console.log('[bot] Optimisations actives : prompt caching + pré-filtre cotes + 1 cycle/jour')
+console.log('[bot] OddsAPI : max 16 compétitions actives × 1 cycle/jour = ~480 req/mois (free plan)')
 
 await envoyerMessageDemarrage()
 
-// Lancer une première analyse synchrone au démarrage (pas de batch au boot)
-await lancerAnalyse()
+// PAS d'analyse au démarrage — évite les requêtes OddsAPI imprévues à chaque redémarrage Koyeb
 
-// 9h Paris (7h UTC) → batch asynchrone (-50% coût Anthropic)
-// 840 req OddsAPI/mois → nécessite plan payant Basic ($39,99)
-cron.schedule('0 7 * * *', () => {
-  lancerAnalyseBatch()
-})
-
-// 10h30 Paris (8h30 UTC) → vérification et traitement des résultats du batch 9h
-cron.schedule('30 8 * * *', () => {
-  verifierResultatsBatch()
-})
-
-// 18h Paris (16h UTC) → analyse synchrone temps réel (alertes immédiates)
+// 18h Paris (16h UTC) → analyse synchrone temps réel (1 seul cycle par jour)
 cron.schedule('0 16 * * *', () => {
   lancerAnalyse()
 })
@@ -592,8 +581,6 @@ cron.schedule('*/5 6-21 * * *', () => {
 })
 
 console.log('[bot] Crons actifs :')
-console.log('  9h00  Paris → batch asynchrone (économique)')
-console.log('  10h30 Paris → vérification résultats batch')
-console.log('  18h00 Paris → analyse synchrone (temps réel)')
+console.log('  18h00 Paris → analyse synchrone (temps réel, 1 fois/jour)')
 console.log('  */5   Paris (8h-23h) → lecture réponses OUI/NON Telegram')
-console.log('[bot] OddsAPI : 840 req/mois → plan Basic requis ($39,99/mois)')
+console.log('[bot] OddsAPI : ~480 req/mois max — compatible free plan (500/mois)')
