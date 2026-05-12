@@ -100,8 +100,16 @@ const estCompetitionActive = (sport) => {
   return true // pas de dates définies → toujours actif
 }
 
+// Marchés OddsAPI dynamiques par sport — `btts` n'existe que pour le football
+// Chaque marché = 1 crédit OddsAPI par requête (× 1 région). Foot=4, autres=3.
+const getMarchesPourSport = (cleSport) => {
+  if (cleSport.startsWith('soccer')) return 'h2h,totals,spreads,btts'
+  return 'h2h,totals,spreads'
+}
+
 const recupererMatchsSport = async (sport) => {
-  const url = `https://api.the-odds-api.com/v4/sports/${sport.cle}/odds/?apiKey=${process.env.ODDS_API_KEY}&regions=eu&markets=h2h,totals&oddsFormat=decimal&dateFormat=iso`
+  const marches = getMarchesPourSport(sport.cle)
+  const url = `https://api.the-odds-api.com/v4/sports/${sport.cle}/odds/?apiKey=${process.env.ODDS_API_KEY}&regions=eu&markets=${marches}&oddsFormat=decimal&dateFormat=iso`
 
   try {
     const reponse = await fetch(url)
@@ -118,7 +126,7 @@ const recupererMatchsSport = async (sport) => {
     const restantes = reponse.headers.get('x-requests-remaining')
     const utilisees  = reponse.headers.get('x-requests-used')
     if (restantes !== null) {
-      console.log(`[collecteur] OddsAPI — ${restantes} requêtes restantes ce mois (${utilisees} utilisées)`)
+      console.log(`[collecteur] OddsAPI — ${restantes} crédits restants ce mois (${utilisees} utilisés)`)
     }
 
     const donnees = await reponse.json()
@@ -139,28 +147,137 @@ const filtrerMatchsProchains24h = (matchs) => {
   })
 }
 
-const extraireCote = (bookmakers, nomEquipe) => {
+// ─── Extraction des cotes par marché ────────────────────────────────────────
+// Stratégie : pour chaque marché, retenir la cote MÉDIANE (résistante aux outliers)
+// + meilleur bookmaker. Les outliers sont déjà gérés par detecteurAnomalie.
+
+const calculerMediane = (valeurs) => {
+  if (valeurs.length === 0) return null
+  const triees = [...valeurs].sort((a, b) => a - b)
+  const milieu = Math.floor(triees.length / 2)
+  return triees.length % 2 === 0
+    ? (triees[milieu - 1] + triees[milieu]) / 2
+    : triees[milieu]
+}
+
+// Mode statistique d'un tableau de valeurs numériques (la plus fréquente)
+const calculerMode = (valeurs) => {
+  if (valeurs.length === 0) return null
+  const comptage = {}
+  for (const v of valeurs) comptage[v] = (comptage[v] ?? 0) + 1
+  let modeValeur = valeurs[0]
+  let modeCount = 0
+  for (const [v, n] of Object.entries(comptage)) {
+    if (n > modeCount) { modeCount = n; modeValeur = parseFloat(v) }
+  }
+  return modeValeur
+}
+
+// H2H : extrait la cote médiane pour un outcome (nom d'équipe ou 'Draw')
+const extraireCote = (bookmakers, nomOutcome) => {
+  const cotes = []
   for (const bookmaker of bookmakers) {
     const marche = bookmaker.markets?.find(m => m.key === 'h2h')
     if (!marche) continue
-    const outcome = marche.outcomes?.find(o => o.name === nomEquipe)
-    if (outcome) return outcome.price
+    const outcome = marche.outcomes?.find(o => o.name === nomOutcome)
+    if (outcome) cotes.push(outcome.price)
   }
-  return null
+  return cotes.length > 0 ? Math.round(calculerMediane(cotes) * 100) / 100 : null
 }
 
-const extraireCoteTotal = (bookmakers, sens) => {
+// Totals : trouve la ligne (point) la plus offerte par les bookmakers,
+// puis extrait la cote médiane Over/Under pour cette ligne.
+const extraireCotesTotals = (bookmakers) => {
+  const pointsOfferts = []
   for (const bookmaker of bookmakers) {
     const marche = bookmaker.markets?.find(m => m.key === 'totals')
     if (!marche) continue
-    const outcome = marche.outcomes?.find(o => o.name === sens)
-    if (outcome) return outcome.price
+    const over = marche.outcomes?.find(o => o.name === 'Over')
+    if (over?.point !== undefined) pointsOfferts.push(over.point)
   }
-  return null
+
+  if (pointsOfferts.length === 0) return { ligne: null, over: null, under: null }
+
+  const ligne = calculerMode(pointsOfferts)
+  const cotesOver = []
+  const cotesUnder = []
+
+  for (const bookmaker of bookmakers) {
+    const marche = bookmaker.markets?.find(m => m.key === 'totals')
+    if (!marche) continue
+    const over = marche.outcomes?.find(o => o.name === 'Over' && o.point === ligne)
+    const under = marche.outcomes?.find(o => o.name === 'Under' && o.point === ligne)
+    if (over) cotesOver.push(over.price)
+    if (under) cotesUnder.push(under.price)
+  }
+
+  return {
+    ligne,
+    over: cotesOver.length > 0 ? Math.round(calculerMediane(cotesOver) * 100) / 100 : null,
+    under: cotesUnder.length > 0 ? Math.round(calculerMediane(cotesUnder) * 100) / 100 : null,
+  }
+}
+
+// Spreads (handicap) : trouve le point handicap le plus offert sur l'équipe domicile,
+// puis extrait la cote médiane pour ce handicap (côté domicile et opposé extérieur).
+const extraireCotesSpreads = (bookmakers, nomDomicile, nomExterieur) => {
+  const pointsDomicile = []
+  for (const bookmaker of bookmakers) {
+    const marche = bookmaker.markets?.find(m => m.key === 'spreads')
+    if (!marche) continue
+    const dom = marche.outcomes?.find(o => o.name === nomDomicile)
+    if (dom?.point !== undefined) pointsDomicile.push(dom.point)
+  }
+
+  if (pointsDomicile.length === 0) {
+    return { handicap_domicile: null, cote_domicile: null, cote_exterieur: null }
+  }
+
+  const handicapDomicile = calculerMode(pointsDomicile)
+  const handicapExterieur = -handicapDomicile
+
+  const cotesDomicile = []
+  const cotesExterieur = []
+
+  for (const bookmaker of bookmakers) {
+    const marche = bookmaker.markets?.find(m => m.key === 'spreads')
+    if (!marche) continue
+    const dom = marche.outcomes?.find(o => o.name === nomDomicile && o.point === handicapDomicile)
+    const ext = marche.outcomes?.find(o => o.name === nomExterieur && o.point === handicapExterieur)
+    if (dom) cotesDomicile.push(dom.price)
+    if (ext) cotesExterieur.push(ext.price)
+  }
+
+  return {
+    handicap_domicile: handicapDomicile,
+    cote_domicile: cotesDomicile.length > 0 ? Math.round(calculerMediane(cotesDomicile) * 100) / 100 : null,
+    cote_exterieur: cotesExterieur.length > 0 ? Math.round(calculerMediane(cotesExterieur) * 100) / 100 : null,
+  }
+}
+
+// BTTS (les deux marquent) — soccer uniquement
+const extraireCotesBtts = (bookmakers) => {
+  const cotesOui = []
+  const cotesNon = []
+  for (const bookmaker of bookmakers) {
+    const marche = bookmaker.markets?.find(m => m.key === 'btts')
+    if (!marche) continue
+    const oui = marche.outcomes?.find(o => o.name === 'Yes')
+    const non = marche.outcomes?.find(o => o.name === 'No')
+    if (oui) cotesOui.push(oui.price)
+    if (non) cotesNon.push(non.price)
+  }
+  return {
+    oui: cotesOui.length > 0 ? Math.round(calculerMediane(cotesOui) * 100) / 100 : null,
+    non: cotesNon.length > 0 ? Math.round(calculerMediane(cotesNon) * 100) / 100 : null,
+  }
 }
 
 const formaterMatch = (match, sport) => {
   const bookmakers = match.bookmakers ?? []
+  const totals = extraireCotesTotals(bookmakers)
+  const spreads = extraireCotesSpreads(bookmakers, match.home_team, match.away_team)
+  const btts = sport.cle.startsWith('soccer') ? extraireCotesBtts(bookmakers) : { oui: null, non: null }
 
   return {
     id: match.id,
@@ -176,17 +293,27 @@ const formaterMatch = (match, sport) => {
     equipe_exterieur: match.away_team,
     date_match: match.commence_time,
     cotes: {
+      // H2H (résultat sec)
       domicile:   extraireCote(bookmakers, match.home_team),
       nul:        extraireCote(bookmakers, 'Draw'),
       exterieur:  extraireCote(bookmakers, match.away_team),
-      over25:     extraireCoteTotal(bookmakers, 'Over'),
-      under25:    extraireCoteTotal(bookmakers, 'Under'),
+      // Totals (over/under) — ligne dynamique (mode statistique)
+      ligne_totals: totals.ligne,
+      over:        totals.over,
+      under:       totals.under,
+      // Spreads (handicap) — handicap dynamique (mode statistique sur le domicile)
+      handicap_domicile_point: spreads.handicap_domicile,
+      handicap_domicile:       spreads.cote_domicile,
+      handicap_exterieur:      spreads.cote_exterieur,
+      // BTTS (foot uniquement)
+      btts_oui: btts.oui,
+      btts_non: btts.non,
     },
     bookmakers_bruts: bookmakers,
   }
 }
 
-const LIMITE_COMPETITIONS_PAR_CYCLE = 16
+const LIMITE_COMPETITIONS_PAR_CYCLE = 25
 
 export const recupererMatchsAVenir = async () => {
   console.log('[collecteur] Récupération des matchs des prochaines 24h...')

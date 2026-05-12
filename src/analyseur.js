@@ -174,6 +174,34 @@ const construireContexteApiFootball = (match) => {
   return lignes.join('\n')
 }
 
+// Construit la section "cotes actuelles" en n'affichant que les marchés disponibles
+const construireSectionCotes = (match) => {
+  const c = match.cotes ?? {}
+  const lignes = []
+
+  if (c.domicile != null) lignes.push(`- Victoire domicile (${match.equipe_domicile}) : ${c.domicile}`)
+  if (c.nul != null)       lignes.push(`- Match nul : ${c.nul}`)
+  if (c.exterieur != null) lignes.push(`- Victoire extérieur (${match.equipe_exterieur}) : ${c.exterieur}`)
+
+  if (c.ligne_totals != null && (c.over != null || c.under != null)) {
+    if (c.over != null)  lignes.push(`- Plus de ${c.ligne_totals} : ${c.over}`)
+    if (c.under != null) lignes.push(`- Moins de ${c.ligne_totals} : ${c.under}`)
+  }
+
+  if (c.handicap_domicile_point != null) {
+    const hd = c.handicap_domicile_point
+    const he = -hd
+    const signe = (v) => v > 0 ? `+${v}` : `${v}`
+    if (c.handicap_domicile != null) lignes.push(`- Handicap ${match.equipe_domicile} (${signe(hd)}) : ${c.handicap_domicile}`)
+    if (c.handicap_exterieur != null) lignes.push(`- Handicap ${match.equipe_exterieur} (${signe(he)}) : ${c.handicap_exterieur}`)
+  }
+
+  if (c.btts_oui != null) lignes.push(`- Les deux marquent (Oui) : ${c.btts_oui}`)
+  if (c.btts_non != null) lignes.push(`- Les deux marquent (Non) : ${c.btts_non}`)
+
+  return lignes.length > 0 ? lignes.join('\n') : '- Aucune cote disponible'
+}
+
 const construirePromptUtilisateur = (match) => `Analyse ce match à venir :
 
 Rencontre : ${match.rencontre}
@@ -181,12 +209,8 @@ Compétition : ${match.competition}
 Sport : ${match.sport}
 Date : ${new Date(match.date_match).toLocaleString('fr-FR')}
 
-Cotes actuelles sur le marché :
-- Victoire domicile : ${match.cotes.domicile ?? 'N/A'}
-- Nul : ${match.cotes.nul ?? 'N/A'}
-- Victoire extérieur : ${match.cotes.exterieur ?? 'N/A'}
-- Plus de 2.5 buts : ${match.cotes.over25 ?? 'N/A'}
-- Moins de 2.5 buts : ${match.cotes.under25 ?? 'N/A'}
+Cotes actuelles sur le marché (médiane multi-bookmakers) :
+${construireSectionCotes(match)}
 ${construireContexteApiFootball(match)}
 Est-ce que ce match correspond aux patterns gagnants de l'expert ?
 
@@ -194,8 +218,8 @@ Réponds UNIQUEMENT avec ce JSON (sans markdown, sans texte autour) :
 {
   "score_similarite": nombre entre 0 et 100,
   "pari_recommande": "description courte du pari suggéré",
-  "type_pari_recommande": "un des types: victoire_domicile | victoire_exterieur | nul | plus_de | moins_de | les_deux_marquent",
-  "valeur_pari": "valeur précise ex: 2.5 pour over/under, ou nom équipe pour victoire",
+  "type_pari_recommande": "un des types: victoire_domicile | victoire_exterieur | nul | plus_de | moins_de | les_deux_marquent | handicap",
+  "valeur_pari": "valeur précise ex: 2.5 pour over/under, nom équipe pour victoire, '${match.equipe_domicile} -1.5' pour handicap, 'oui'/'non' pour les_deux_marquent",
   "cote_suggeree": nombre (la cote correspondante parmi celles fournies),
   "tags_correspondants": ["tag1", "tag2"],
   "raisonnement": "2-3 phrases maximum expliquant pourquoi ce match correspond",
@@ -208,19 +232,16 @@ const construirePromptUtilisateurAnomalie = (match, anomalie) => `ANOMALIE DE MA
 Match : ${match.rencontre} (${match.competition}) — ${match.sport}
 Date : ${new Date(match.date_match).toLocaleString('fr-FR')}
 
+Marché concerné : ${anomalie.marche?.toUpperCase() ?? 'H2H'}
 L'outcome "${anomalie.outcome}" affiche une cote anormalement haute :
 - Médiane du marché (${anomalie.nb_bookmakers} bookmakers) : ${anomalie.cote_mediane}
 - Cote anormale trouvée : ${anomalie.cote_anomalie} sur ${anomalie.bookmaker}
 - Écart : +${anomalie.ecart_pourcent}% au-dessus du marché
 - Toutes les cotes disponibles : ${anomalie.toutes_cotes.join(' / ')}
-${anomalie.marge_marche !== null ? `- Marge best-available du marché : ${anomalie.marge_marche}% (normale : 4-7%)` : ''}
+${anomalie.marge_marche !== null ? `- Marge best-available du marché H2H : ${anomalie.marge_marche}% (normale : 4-7%)` : ''}
 
-Cotes H2H du match :
-- Domicile : ${match.cotes.domicile ?? 'N/A'}
-- Nul : ${match.cotes.nul ?? 'N/A'}
-- Extérieur : ${match.cotes.exterieur ?? 'N/A'}
-- Over 2.5 : ${match.cotes.over25 ?? 'N/A'}
-- Under 2.5 : ${match.cotes.under25 ?? 'N/A'}
+Cotes médianes de référence du match :
+${construireSectionCotes(match)}
 ${construireContexteApiFootball(match)}
 
 QUESTION : Cette cote anormale est-elle une vraie opportunité de value bet, ou existe-t-il une raison valable (blessure majeure récente, suspension, erreur de ligne bookmaker, équipe B alignée) ?
@@ -231,8 +252,8 @@ Réponds UNIQUEMENT avec ce JSON (sans markdown, sans texte autour) :
   "est_opportunite_reelle": true ou false,
   "score_valeur": nombre entre 0 et 100,
   "pari_recommande": "description courte du pari suggéré",
-  "type_pari_recommande": "victoire_domicile | victoire_exterieur | nul | plus_de | moins_de | les_deux_marquent",
-  "valeur_pari": "valeur précise ex: équipe, 2.5, oui",
+  "type_pari_recommande": "victoire_domicile | victoire_exterieur | nul | plus_de | moins_de | les_deux_marquent | handicap",
+  "valeur_pari": "valeur précise ex: équipe, 2.5, oui, '${match.equipe_domicile} -1.5'",
   "cote_recommandee": nombre (la cote anormale trouvée),
   "tags_correspondants": ["tag1", "tag2"],
   "raisonnement": "2-3 phrases expliquant l'opportunité ou la raison de la fausse alerte",

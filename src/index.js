@@ -62,24 +62,34 @@ const PLAGES_RISQUE = {
   tres_risque: { min: 3.00, max: 20.0 },
 }
 
+// Champs de `match.cotes` qui ne sont PAS des cotes (lignes/points de référence)
+const CHAMPS_NON_COTE = new Set(['ligne_totals', 'handicap_domicile_point'])
+
+// Extrait uniquement les vraies cotes d'un match (exclut les lignes/points de référence)
+const extraireCotesReelles = (match) => {
+  return Object.entries(match.cotes ?? {})
+    .filter(([cle, val]) => val != null && !CHAMPS_NON_COTE.has(cle))
+    .map(([, val]) => val)
+}
+
 // Pré-filtre global (large) — réduit les appels API-Football tout en couvrant tous les profils
-const filtrerMatchsGlobal = (matchs, limite = 20) => {
+const filtrerMatchsGlobal = (matchs, limite = 25) => {
   return matchs
     .filter(match => {
-      const cotes = Object.values(match.cotes).filter(c => c != null)
+      const cotes = extraireCotesReelles(match)
       return cotes.some(c => c >= 1.10 && c <= 20)
     })
     .slice(0, limite)
 }
 
-// Filtre par utilisateur — applique son profil de risque + ses sports + limite à 8
-const filtrerMatchsUtilisateur = (matchs, prefBot, limite = 8) => {
+// Filtre par utilisateur — applique son profil de risque + ses sports + limite à 10
+const filtrerMatchsUtilisateur = (matchs, prefBot, limite = 10) => {
   const plage = PLAGES_RISQUE[prefBot?.profil_risque] ?? PLAGES_RISQUE.equilibre
   const sports = prefBot?.sports?.length > 0 ? prefBot.sports : null
   return matchs
     .filter(match => {
       if (sports && !sports.includes(match.sport)) return false
-      const cotes = Object.values(match.cotes).filter(c => c != null)
+      const cotes = extraireCotesReelles(match)
       return cotes.some(c => c >= plage.min && c <= plage.max)
     })
     .slice(0, limite)
@@ -563,14 +573,25 @@ const verifierResultatsBatch = async () => {
 // ─── Démarrage ────────────────────────────────────────────────────────────────
 
 console.log('🚀 BetEdge Bot — Démarrage...')
-console.log('[bot] Optimisations actives : prompt caching + pré-filtre cotes + 1 cycle/jour')
-console.log('[bot] OddsAPI : max 16 compétitions actives × 1 cycle/jour = ~480 req/mois (free plan)')
+console.log('[bot] Optimisations actives : prompt caching + batch 9h + pré-filtre cotes + 2 cycles/jour')
+console.log('[bot] Marchés OddsAPI : foot=h2h+totals+spreads+btts (4 crédits) | autres=h2h+totals+spreads (3 crédits)')
+console.log('[bot] OddsAPI : max 25 compétitions × 2 cycles × ~3.3 marchés ≈ 5000 crédits/mois (plan $30/mois = 20k crédits)')
 
 await envoyerMessageDemarrage()
 
 // PAS d'analyse au démarrage — évite les requêtes OddsAPI imprévues à chaque redémarrage Koyeb
 
-// 18h Paris (16h UTC) → analyse synchrone temps réel (1 seul cycle par jour)
+// 9h Paris (7h UTC) → cycle BATCH (-50% coût Anthropic, résultats traités à 10h30)
+cron.schedule('0 7 * * *', () => {
+  lancerAnalyseBatch()
+})
+
+// 10h30 Paris (8h30 UTC) → vérification des résultats du batch 9h
+cron.schedule('30 8 * * *', () => {
+  verifierResultatsBatch()
+})
+
+// 18h Paris (16h UTC) → analyse synchrone temps réel (matchs du soir)
 cron.schedule('0 16 * * *', () => {
   lancerAnalyse()
 })
@@ -581,6 +602,7 @@ cron.schedule('*/5 6-21 * * *', () => {
 })
 
 console.log('[bot] Crons actifs :')
-console.log('  18h00 Paris → analyse synchrone (temps réel, 1 fois/jour)')
+console.log('  09h00 Paris → cycle batch asynchrone (-50% coût Claude)')
+console.log('  10h30 Paris → vérification résultats batch + envoi alertes')
+console.log('  18h00 Paris → cycle synchrone temps réel (matchs du soir)')
 console.log('  */5   Paris (8h-23h) → lecture réponses OUI/NON Telegram')
-console.log('[bot] OddsAPI : ~480 req/mois max — compatible free plan (500/mois)')

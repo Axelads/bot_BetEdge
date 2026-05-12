@@ -18,21 +18,25 @@ bot/
 └── package.json
 ```
 
-## Cycles d'analyse
+## Cycles d'analyse — Plan OddsAPI $30/mois (20k crédits)
 
 | Heure (Paris) | Type | Description |
 |--------------|------|-------------|
-| **9h00** | Batch (asynchrone) | Soumet toutes les analyses à l'API Batch Anthropic (−50% coût). Contexte sauvegardé dans `batch_state.json`. |
-| **10h30** | Vérification batch | Récupère les résultats du batch 9h et envoie les alertes Telegram. |
-| **18h00** | Synchrone | Analyse en temps réel, alertes Telegram immédiates. |
-| **Démarrage** | Synchrone | Une analyse synchrone est lancée immédiatement au boot. |
+| **09h00** | Batch | `lancerAnalyseBatch()` — soumet toutes les analyses au Batch API Anthropic (-50% coût). |
+| **10h30** | Récupération | `verifierResultatsBatch()` — récupère les résultats du batch + envoie les alertes. |
+| **18h00** | Synchrone | Analyse temps réel pour les matchs du soir, alertes Telegram immédiates. |
+| **toutes les 5 min** (8h-23h) | Réponses | Lecture des boutons OUI/NON Telegram → log dans `alertes_bot.decision_expert`. |
+
+> ⚠️ **Pas d'analyse au boot** — évite les requêtes OddsAPI imprévues à chaque redémarrage Koyeb.
+
+**Budget OddsAPI :** max 25 compétitions actives × 2 cycles × 30j × ~3.3 marchés ≈ **5000 crédits/mois** (plan $30 = 20 000 crédits, marge ×4).
 
 ## Double piste d'analyse par match
 
 Pour chaque match dans la plage de cotes ciblée :
 
 1. **Pattern matching** — Claude compare le match aux paris gagnants de l'Expert et attribue un `score_similarite` (0–100). Alerte si ≥ 60 + confiance ≠ faible.
-2. **Anomalie de cotes** — Détection mathématique d'une cote > médiane marché de +12% (≥ 3 bookmakers). Claude valide si c'est une vraie opportunité. Alerte si score_anomalie ≥ 60 + `est_opportunite_reelle` = true + score_valeur ≥ 65.
+2. **Anomalie de cotes** — Détection mathématique d'une cote > médiane marché de +12% (≥ 3 bookmakers). **Scannée sur les 4 marchés OddsAPI** : H2H, Totals, Spreads (handicap), BTTS. Claude valide si c'est une vraie opportunité. Alerte si score_anomalie ≥ 60 + `est_opportunite_reelle` = true + score_valeur ≥ 65.
 
 ## Optimisations coût Anthropic (actives)
 
@@ -44,8 +48,10 @@ Toutes les analyses (tous users × tous matchs) sont soumises en un seul batch A
 
 ### 3. Pré-filtre des matchs (per-user)
 Filtre en deux temps :
-- **Global large** (1,10–20, max 20 matchs) — mutualisé pour l'enrichissement API-Football
-- **Per-user** (plage de cotes selon `profil_risque`, sports sélectionnés, max 8) — appliqué dans la boucle par utilisateur
+- **Global large** (1,10–20, max 25 matchs) — mutualisé pour l'enrichissement API-Football
+- **Per-user** (plage de cotes selon `profil_risque`, sports sélectionnés, max 10) — appliqué dans la boucle par utilisateur
+
+> Les champs `ligne_totals` et `handicap_domicile_point` sont exclus des filtres (ce sont des points de référence, pas des cotes) via `extraireCotesReelles()`.
 
 **Impact cumulé : ~−72% sur le coût Claude.**
 
@@ -147,13 +153,18 @@ Chaque compétition définit sa fenêtre de saison (format MMJJ). Les compétiti
 
 ## OddsAPI — consommation estimée
 
-| Scénario | Req/mois |
-|---------|---------|
-| Sans filtrage saison (48 sports × 2 cycles × 30j) | ~2 880 |
-| **Avec filtrage (12–15 actifs en moyenne)** | **~720–900** |
+Chaque requête HTTP consomme `nb_marchés × nb_régions` crédits.
 
-Le filtrage par saison économise environ **~1 700 req/mois** par rapport à un appel systématique.
-Plan Basic OddsAPI requis ($39,99/mois, 10 000 req/mois).
+**Marchés dynamiques par sport** via `getMarchesPourSport(cleSport)` :
+- Foot : `h2h,totals,spreads,btts` → 4 crédits/appel
+- Tennis / Basket / Rugby / Hockey : `h2h,totals,spreads` → 3 crédits/appel
+
+| Scénario | Crédits/mois |
+|---------|-------------|
+| Sans filtrage saison (48 sports × 2 cycles × 30j × ~3.3 marchés) | ~9 500 |
+| **Avec filtrage saison (~15 actifs en moyenne) + cap 25** | **~3 000–5 000** |
+
+**Plan utilisé : OddsAPI Pro ($30/mois, 20 000 crédits/mois)** — marge confortable (×4) pour les périodes de haute activité (été, coupes européennes, multi-sports en parallèle).
 
 ## Préférences utilisateur (`preferences_bot` dans PocketBase)
 
