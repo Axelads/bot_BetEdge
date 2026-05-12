@@ -9,12 +9,12 @@ dotenv.config()
 import { recupererMatchsAVenir } from './collecteurCotes.js'
 import { enrichirMatchsFootball } from './enrichisseurApiFootball.js'
 import {
-  analyserMatch, analyserCoteAnomale,
+  analyserMatch, analyserCoteAnomale, critiquerAnalyse,
   construirePromptSysteme, construirePromptSystemeAnomalie,
   creerRequeteBatchPattern, creerRequeteBatchAnomalie,
   idSafe, soumettreRequetesBatch, verifierStatutBatch, recupererResultatsBatch,
 } from './analyseur.js'
-import { calculerStats, doitEnvoyerAlerte, preparerAlerte, doitEnvoyerAlerteAnomalie, preparerAlerteAnomalie } from './comparateurPatterns.js'
+import { calculerStats, doitEnvoyerAlerte, preparerAlerte, doitEnvoyerAlerteAnomalie, preparerAlerteAnomalie, appliquerCritique, filtreContexteCritique, calculerTier } from './comparateurPatterns.js'
 import { detecterAnomaliesCotes } from './detecteurAnomalie.js'
 import { envoyerAlerte, envoyerAlerteAnomalie, envoyerMessageDemarrage } from './telegram.js'
 import { traiterReponsesTelegram } from './receptionReponses.js'
@@ -262,8 +262,17 @@ const analyserPourUtilisateur = async (profil, tousMatchsAVenir) => {
   console.log(`[bot] Stats — sport: ${stats.meileurSport} | type: ${stats.meilleurTypePari} | format: ${formatPari}`)
 
   let nbAlertes = 0
+  let nbRejetesPreFiltre = 0
 
   for (const match of matchsAVenir) {
+    // ── Pré-filtre Phase 3 — rejet AVANT tout appel Claude ─────────────────
+    const motifRejet = filtreContexteCritique(match)
+    if (motifRejet) {
+      console.log(`[bot] ⏭️  Pré-filtre rejette ${match.rencontre} — ${motifRejet}`)
+      nbRejetesPreFiltre++
+      continue
+    }
+
     // ── Piste 1 : Pattern matching ──────────────────────────────────────────
     if (analyserPatterns) {
       const analyse = await analyserMatch(match, parisGagnants, parisPerdants, stats, nbUtilisateurs, { formatPari })
@@ -273,12 +282,23 @@ const analyserPourUtilisateur = async (profil, tousMatchsAVenir) => {
       }
 
       if (analyse && doitEnvoyerAlerte(analyse)) {
-        console.log(`[bot] Alerte patterns: ${analyse.pari_recommande}`)
-        const alerte = { ...preparerAlerte(match, analyse), sport: match.sport, user: userId }
-        const alerteSauvegardee = await sauvegarderAlerte(alerte)
-        if (alerteSauvegardee) {
-          const envoye = await envoyerAlerte({ ...alerte, telegramChatId, confiance: analyse.confiance, alerteId: alerteSauvegardee.id })
-          if (envoye) { await marquerAlerteTelegramEnvoyee(alerteSauvegardee.id); nbAlertes++ }
+        // Phase 2 — Critique avocat du diable (2ème passe Claude)
+        const critique = await critiquerAnalyse(match, analyse, { type: 'pattern' })
+        const analyseFinale = appliquerCritique(analyse, critique)
+
+        if (!analyseFinale) {
+          console.log(`[bot] ❌ Critique rejette: ${match.rencontre} — ${critique?.raison_critique ?? 'verdict rejeter'}`)
+        } else if (!doitEnvoyerAlerte(analyseFinale)) {
+          console.log(`[bot] ❌ Après ajustement critique, seuils non atteints: ${match.rencontre}`)
+        } else {
+          const alerte = { ...preparerAlerte(match, analyseFinale), sport: match.sport, user: userId }
+          const tier = calculerTier({ score: alerte.score_similarite, edge: alerte.edge_pourcent, confiance: analyseFinale.confiance })
+          console.log(`[bot] ✅ Alerte patterns [${tier}] (critique=${critique?.verdict ?? 'no-op'}): ${analyseFinale.pari_recommande}`)
+          const alerteSauvegardee = await sauvegarderAlerte(alerte)
+          if (alerteSauvegardee) {
+            const envoye = await envoyerAlerte({ ...alerte, telegramChatId, tier, confiance: analyseFinale.confiance, alerteId: alerteSauvegardee.id })
+            if (envoye) { await marquerAlerteTelegramEnvoyee(alerteSauvegardee.id); nbAlertes++ }
+          }
         }
       }
     }
@@ -297,24 +317,40 @@ const analyserPourUtilisateur = async (profil, tousMatchsAVenir) => {
         }
 
         if (doitEnvoyerAlerteAnomalie(anomalie, analyseAnomalie)) {
-          console.log(`[bot] Alerte anomalie: ${analyseAnomalie.pari_recommande}`)
-          const donneesAlertePB = { ...preparerAlerteAnomalie(match, anomalie, analyseAnomalie), sport: match.sport, user: userId }
-          const alerteAnomalie = {
-            ...donneesAlertePB,
-            outcome_anomalie: anomalie.outcome,
-            cote_mediane: anomalie.cote_mediane,
-            bookmaker_anomalie: anomalie.bookmaker,
-            ecart_pourcent: anomalie.ecart_pourcent,
-            confiance: analyseAnomalie.confiance,
-          }
-          const alerteSauvegardee = await sauvegarderAlerte(donneesAlertePB)
-          if (alerteSauvegardee) {
-            const envoye = await envoyerAlerteAnomalie({ ...alerteAnomalie, telegramChatId, alerteId: alerteSauvegardee.id })
-            if (envoye) { await marquerAlerteTelegramEnvoyee(alerteSauvegardee.id); nbAlertes++ }
+          // Phase 2 — Critique avocat du diable (2ème passe Claude)
+          const critique = await critiquerAnalyse(match, analyseAnomalie, { type: 'anomalie', anomalie })
+          const analyseFinale = appliquerCritique(analyseAnomalie, critique)
+
+          if (!analyseFinale) {
+            console.log(`[bot] ❌ Critique rejette anomalie: ${match.rencontre} — ${critique?.raison_critique ?? 'verdict rejeter'}`)
+          } else if (!doitEnvoyerAlerteAnomalie(anomalie, analyseFinale)) {
+            console.log(`[bot] ❌ Après ajustement critique, seuils anomalie non atteints: ${match.rencontre}`)
+          } else {
+            const donneesAlertePB = { ...preparerAlerteAnomalie(match, anomalie, analyseFinale), sport: match.sport, user: userId }
+            const tier = calculerTier({ score: donneesAlertePB.score_valeur, edge: donneesAlertePB.edge_pourcent, confiance: analyseFinale.confiance })
+            console.log(`[bot] ✅ Alerte anomalie [${tier}] (critique=${critique?.verdict ?? 'no-op'}): ${analyseFinale.pari_recommande}`)
+            const alerteAnomalie = {
+              ...donneesAlertePB,
+              outcome_anomalie: anomalie.outcome,
+              cote_mediane: anomalie.cote_mediane,
+              bookmaker_anomalie: anomalie.bookmaker,
+              ecart_pourcent: anomalie.ecart_pourcent,
+              confiance: analyseFinale.confiance,
+              tier,
+            }
+            const alerteSauvegardee = await sauvegarderAlerte(donneesAlertePB)
+            if (alerteSauvegardee) {
+              const envoye = await envoyerAlerteAnomalie({ ...alerteAnomalie, telegramChatId, alerteId: alerteSauvegardee.id })
+              if (envoye) { await marquerAlerteTelegramEnvoyee(alerteSauvegardee.id); nbAlertes++ }
+            }
           }
         }
       }
     }
+  }
+
+  if (nbRejetesPreFiltre > 0) {
+    console.log(`[bot] ${userId} — ${nbRejetesPreFiltre} match(s) écarté(s) par le pré-filtre contexte`)
   }
 
   return nbAlertes
@@ -426,7 +462,16 @@ const lancerAnalyseBatch = async () => {
       const promptPattern = construirePromptSysteme(parisGagnants, parisPerdants, stats, nbUtilisateurs, { formatPari })
       const promptAnomalie = construirePromptSystemeAnomalie(parisGagnants, parisPerdants, stats, nbUtilisateurs)
 
+      let nbRejetesPreFiltreBatch = 0
       for (const match of matchsUtilisateur) {
+        // ── Pré-filtre Phase 3 — économise les requêtes batch ──────────────
+        const motifRejet = filtreContexteCritique(match)
+        if (motifRejet) {
+          console.log(`[bot] ⏭️  Pré-filtre rejette ${match.rencontre} (${userId.slice(0,8)}…) — ${motifRejet}`)
+          nbRejetesPreFiltreBatch++
+          continue
+        }
+
         const { bookmakers_bruts, ...matchSansBrut } = match
 
         if (typesAnalyse.includes('patterns')) {
@@ -445,9 +490,12 @@ const lancerAnalyseBatch = async () => {
         }
       }
 
-      const nbPatterns = typesAnalyse.includes('patterns') ? matchsUtilisateur.length : 0
-      const nbAnomalies = typesAnalyse.includes('anomalies') ? matchsUtilisateur.filter(m => detecterAnomaliesCotes(m) !== null).length : 0
-      console.log(`[bot] ${userId} — ${nbPatterns} requêtes pattern + ${nbAnomalies} requêtes anomalie (${matchsUtilisateur.length} matchs)`)
+      const matchsAnalyses = matchsUtilisateur.length - nbRejetesPreFiltreBatch
+      const nbPatterns = typesAnalyse.includes('patterns') ? matchsAnalyses : 0
+      const nbAnomalies = typesAnalyse.includes('anomalies')
+        ? matchsUtilisateur.filter(m => !filtreContexteCritique(m) && detecterAnomaliesCotes(m) !== null).length
+        : 0
+      console.log(`[bot] ${userId} — ${nbPatterns} requêtes pattern + ${nbAnomalies} requêtes anomalie (${matchsAnalyses}/${matchsUtilisateur.length} matchs après pré-filtre)`)
     }
 
     if (toutesRequetes.length === 0) {
@@ -519,16 +567,27 @@ const verifierResultatsBatch = async () => {
       }
 
       if (analyse && doitEnvoyerAlerte(analyse)) {
-        console.log(`[batch] ✅ Alerte patterns: ${analyse.pari_recommande}`)
+        // Phase 2 — Critique avocat du diable (synchrone, faible volume = quelques alertes max)
+        const critique = await critiquerAnalyse(match, analyse, { type: 'pattern' })
+        const analyseFinale = appliquerCritique(analyse, critique)
 
-        const alerte = { ...preparerAlerte(match, analyse), sport: match.sport, user: userId }
-        const alerteSauvegardee = await sauvegarderAlerte(alerte)
+        if (!analyseFinale) {
+          console.log(`[batch] ❌ Critique rejette: ${match.rencontre} — ${critique?.raison_critique ?? 'verdict rejeter'}`)
+        } else if (!doitEnvoyerAlerte(analyseFinale)) {
+          console.log(`[batch] ❌ Après ajustement critique, seuils non atteints: ${match.rencontre}`)
+        } else {
+          const alerte = { ...preparerAlerte(match, analyseFinale), sport: match.sport, user: userId }
+          const tier = calculerTier({ score: alerte.score_similarite, edge: alerte.edge_pourcent, confiance: analyseFinale.confiance })
+          console.log(`[batch] ✅ Alerte patterns [${tier}] (critique=${critique?.verdict ?? 'no-op'}): ${analyseFinale.pari_recommande}`)
 
-        if (alerteSauvegardee) {
-          const envoye = await envoyerAlerte({ ...alerte, telegramChatId, confiance: analyse.confiance, alerteId: alerteSauvegardee.id })
-          if (envoye) {
-            await marquerAlerteTelegramEnvoyee(alerteSauvegardee.id)
-            nbAlertes++
+          const alerteSauvegardee = await sauvegarderAlerte(alerte)
+
+          if (alerteSauvegardee) {
+            const envoye = await envoyerAlerte({ ...alerte, telegramChatId, tier, confiance: analyseFinale.confiance, alerteId: alerteSauvegardee.id })
+            if (envoye) {
+              await marquerAlerteTelegramEnvoyee(alerteSauvegardee.id)
+              nbAlertes++
+            }
           }
         }
       }
@@ -540,25 +599,37 @@ const verifierResultatsBatch = async () => {
       }
 
       if (doitEnvoyerAlerteAnomalie(anomalie, analyse)) {
-        console.log(`[batch] ⚡ Alerte anomalie: ${analyse.pari_recommande}`)
+        // Phase 2 — Critique avocat du diable
+        const critique = await critiquerAnalyse(match, analyse, { type: 'anomalie', anomalie })
+        const analyseFinale = appliquerCritique(analyse, critique)
 
-        const donneesAlertePB = { ...preparerAlerteAnomalie(match, anomalie, analyse), sport: match.sport, user: userId }
-        const alerteAnomalie = {
-          ...donneesAlertePB,
-          outcome_anomalie: anomalie.outcome,
-          cote_mediane: anomalie.cote_mediane,
-          bookmaker_anomalie: anomalie.bookmaker,
-          ecart_pourcent: anomalie.ecart_pourcent,
-          confiance: analyse.confiance,
-        }
+        if (!analyseFinale) {
+          console.log(`[batch] ❌ Critique rejette anomalie: ${match.rencontre} — ${critique?.raison_critique ?? 'verdict rejeter'}`)
+        } else if (!doitEnvoyerAlerteAnomalie(anomalie, analyseFinale)) {
+          console.log(`[batch] ❌ Après ajustement critique, seuils anomalie non atteints: ${match.rencontre}`)
+        } else {
+          const donneesAlertePB = { ...preparerAlerteAnomalie(match, anomalie, analyseFinale), sport: match.sport, user: userId }
+          const tier = calculerTier({ score: donneesAlertePB.score_valeur, edge: donneesAlertePB.edge_pourcent, confiance: analyseFinale.confiance })
+          console.log(`[batch] ⚡ Alerte anomalie [${tier}] (critique=${critique?.verdict ?? 'no-op'}): ${analyseFinale.pari_recommande}`)
 
-        const alerteSauvegardee = await sauvegarderAlerte(donneesAlertePB)
+          const alerteAnomalie = {
+            ...donneesAlertePB,
+            outcome_anomalie: anomalie.outcome,
+            cote_mediane: anomalie.cote_mediane,
+            bookmaker_anomalie: anomalie.bookmaker,
+            ecart_pourcent: anomalie.ecart_pourcent,
+            confiance: analyseFinale.confiance,
+            tier,
+          }
 
-        if (alerteSauvegardee) {
-          const envoye = await envoyerAlerteAnomalie({ ...alerteAnomalie, telegramChatId, alerteId: alerteSauvegardee.id })
-          if (envoye) {
-            await marquerAlerteTelegramEnvoyee(alerteSauvegardee.id)
-            nbAlertes++
+          const alerteSauvegardee = await sauvegarderAlerte(donneesAlertePB)
+
+          if (alerteSauvegardee) {
+            const envoye = await envoyerAlerteAnomalie({ ...alerteAnomalie, telegramChatId, alerteId: alerteSauvegardee.id })
+            if (envoye) {
+              await marquerAlerteTelegramEnvoyee(alerteSauvegardee.id)
+              nbAlertes++
+            }
           }
         }
       }

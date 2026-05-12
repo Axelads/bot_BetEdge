@@ -38,13 +38,31 @@ ${JSON.stringify(perdantsSynthese, null, 2)}
     ? `\n- Tags fréquemment associés aux défaites ${label} : ${stats.tagsPerdants.join(', ')} — pénalise les matchs portant ces tags`
     : ''
 
-  return `Tu es un assistant d'analyse de paris sportifs expert.
-Tu analyses si un match à venir correspond aux patterns GAGNANTS de ${source}, tout en évitant les patterns PERDANTS identifiés.
+  return `Tu es un analyste expert en paris sportifs, spécialisé en VALUE BETTING (méthodologie Kelly).
+Ta mission : identifier les opportunités où la cote du marché SOUS-ESTIME la probabilité réelle d'un événement, en t'appuyant sur les patterns GAGNANTS de ${source} et en évitant les patterns PERDANTS.
 
-Voici les paris GAGNANTS ${label} (les plus représentatifs, triés par confiance) :
+═══ DOCTRINE PRO ═══
+Un pari profitable sur le long terme requiert UN SEUL critère absolu : un EDGE positif et significatif.
+  edge_pourcent = (probabilite_estimee × cote_marche − 1) × 100
+
+  • edge ≥ 8%  → opportunité forte (rare, à privilégier)
+  • edge 5-8%  → bonne opportunité
+  • edge < 5%  → on passe, même si "ça sent bon" — sans edge mathématique, c'est du divertissement
+  • edge < 0%  → la cote est trop basse pour la probabilité réelle → REJET
+
+Tu dois donc estimer une probabilité RÉELLE et HONNÊTE (pas optimiste). Si tu n'as pas assez d'infos fiables, déclare le match comme "faible" et n'alerte pas — mieux vaut zéro alerte qu'une mauvaise.
+
+═══ MÉTHODOLOGIE EN 5 ÉTAPES ═══
+1. Forme récente — résultats, dynamique offensive/défensive, motivation
+2. Face-à-face — historique direct, scores typiques
+3. Compositions & absences — joueurs clés out, formations probables
+4. Estimation de probabilité — sois conservateur ; un favori en bonne forme ≠ 90%, c'est 60-70% au mieux
+5. Calcul Edge — applique la formule, sois mathématique
+
+═══ PATTERNS GAGNANTS ${label.toUpperCase()} (${parisGagnants.length} paris, triés par confiance) ═══
 ${JSON.stringify(parisGagnants.slice(0, 25), null, 2)}
 ${sectionPerdants}
-Statistiques clés ${label} (calculées sur toute la base) :
+═══ STATISTIQUES ${label.toUpperCase()} ═══
 - Sport le plus rentable : ${stats.meileurSport} (ROI: ${stats.roiMeileurSport}%)
 - Type de pari optimal : ${stats.meilleurTypePari}
 - Tags les plus rentables : ${stats.meilleursTags.join(', ')}
@@ -54,7 +72,14 @@ Statistiques clés ${label} (calculées sur toute la base) :
 
 Format de pari souhaité : ${instructionFormat}
 
-IMPORTANT : si le match présente plusieurs tags ou un contexte similaire aux paris perdants, baisser le score_similarite et mettre envoyer_alerte à false.
+═══ RÈGLES D'ALERTE (envoyer_alerte = true UNIQUEMENT si TOUTES réunies) ═══
+1. edge_pourcent ≥ 5
+2. probabilite_estimee ≥ 0.45 (au moins 45% de chances — pas de cotes hasardeuses)
+3. score_similarite ≥ 60 (cohérence avec patterns gagnants)
+4. confiance ≠ "faible"
+5. AUCUN tag perdant majeur identifié sur ce match
+
+Si l'une de ces conditions n'est pas remplie → envoyer_alerte = false, point.
 
 Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks, sans texte avant ou après.`
 }
@@ -80,15 +105,36 @@ export const construirePromptSystemeAnomalie = (parisGagnants, parisPerdants = [
     ? ` | Tags perdants récurrents : ${stats.tagsPerdants.join(', ')}`
     : ''
 
-  return `Tu es un assistant d'analyse de paris sportifs expert, spécialisé dans la détection de valeur (value betting).
+  return `Tu es un analyste expert en VALUE BETTING (méthodologie Kelly), spécialisé dans la détection d'anomalies de marché exploitables.
 
-Patterns gagnants ${source} (${parisGagnants.length} paris) :
+═══ DOCTRINE PRO ═══
+Une anomalie de cote (un bookmaker qui propose une cote significativement plus haute que la médiane du marché) PEUT être :
+  A. Une vraie opportunité de value (le bookmaker se trompe ou tarde à ajuster) → ALERTE
+  B. Une réaction RATIONNELLE à une info que les autres ont déjà intégrée (blessure majeure, suspension, équipe B, météo) → REJET
+  C. Une erreur de saisie ou un effet de marge agressive du bookmaker → REJET
+
+Ta mission : déterminer A vs B vs C, et calculer l'EDGE mathématique réel.
+
+  edge_pourcent = (probabilite_estimee × cote_anomalie − 1) × 100
+
+  • edge ≥ 10% sur une anomalie → opportunité forte (très rare)
+  • edge 5-10%               → bonne opportunité
+  • edge < 5%                → on passe : l'anomalie n'a pas assez de marge pour absorber la variance
+  • edge < 0%                → la cote est juste correctement valorisée par le marché (l'anomalie est une fausse alerte)
+
+═══ PATTERNS GAGNANTS ${source.toUpperCase()} (${parisGagnants.length} paris) ═══
 ${JSON.stringify(parisGagnants.slice(0, 20), null, 2)}
 ${sectionPerdants}
-Statistiques ${source} : sport=${stats.meileurSport} | type=${stats.meilleurTypePari} | tranche cote=${stats.meilleureTrancheCote} | win rate haute confiance=${stats.tauxReussiteHauteConfiance}%${lignePerdants}
+═══ STATS ${source.toUpperCase()} ═══
+sport=${stats.meileurSport} | type=${stats.meilleurTypePari} | tranche cote=${stats.meilleureTrancheCote} | win rate haute confiance=${stats.tauxReussiteHauteConfiance}%${lignePerdants}
 
-Tu dois évaluer si une anomalie de cote représente une vraie opportunité de value bet, ou si elle a une explication rationnelle (blessure majeure, suspension, erreur bookmaker, équipe B).
-Si le contexte du match ressemble aux patterns perdants, baisser le score_valeur et mettre est_opportunite_reelle à false.
+═══ RÈGLES D'ALERTE (est_opportunite_reelle = true UNIQUEMENT si TOUTES réunies) ═══
+1. edge_pourcent ≥ 5
+2. probabilite_estimee ≥ 0.40
+3. AUCUNE cause rationnelle identifiée (pas de blessure majeure non intégrée, pas d'équipe B avérée)
+4. score_valeur ≥ 65
+5. confiance ≠ "faible"
+
 Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks, sans texte avant ou après.`
 }
 
@@ -202,7 +248,7 @@ const construireSectionCotes = (match) => {
   return lignes.length > 0 ? lignes.join('\n') : '- Aucune cote disponible'
 }
 
-const construirePromptUtilisateur = (match) => `Analyse ce match à venir :
+const construirePromptUtilisateur = (match) => `Analyse ce match à venir avec la méthodologie value betting en 5 étapes :
 
 Rencontre : ${match.rencontre}
 Compétition : ${match.competition}
@@ -212,17 +258,33 @@ Date : ${new Date(match.date_match).toLocaleString('fr-FR')}
 Cotes actuelles sur le marché (médiane multi-bookmakers) :
 ${construireSectionCotes(match)}
 ${construireContexteApiFootball(match)}
-Est-ce que ce match correspond aux patterns gagnants de l'expert ?
+
+RAPPEL DE LA FORMULE EDGE :
+  edge_pourcent = (probabilite_estimee × cote_suggeree − 1) × 100
+  Ex : prob 0.62 × cote 1.90 = 1.178 → edge = +17.8% (excellente value)
+  Ex : prob 0.55 × cote 1.70 = 0.935 → edge = -6.5% (cote trop basse, on passe)
+
+CONSIGNES :
+- Si tu n'as PAS assez d'infos contextuelles fiables (forme/blessures/H2H), mets confiance = "faible" et envoyer_alerte = false
+- probabilite_estimee doit être HONNÊTE : un favori clair = 0.55-0.70 max, jamais 0.85+
+- cote_suggeree doit être STRICTEMENT une des cotes affichées ci-dessus
+- Si edge_pourcent < 5 → envoyer_alerte = false même si patterns OK
 
 Réponds UNIQUEMENT avec ce JSON (sans markdown, sans texte autour) :
 {
-  "score_similarite": nombre entre 0 et 100,
+  "analyse_forme": "1-2 phrases sur la dynamique récente des 2 équipes (ou 'données insuffisantes')",
+  "analyse_h2h": "1-2 phrases sur le face-à-face historique (ou 'données insuffisantes')",
+  "analyse_compositions": "1-2 phrases sur absences/blessures/compos (ou 'données insuffisantes')",
   "pari_recommande": "description courte du pari suggéré",
   "type_pari_recommande": "un des types: victoire_domicile | victoire_exterieur | nul | plus_de | moins_de | les_deux_marquent | handicap",
   "valeur_pari": "valeur précise ex: 2.5 pour over/under, nom équipe pour victoire, '${match.equipe_domicile} -1.5' pour handicap, 'oui'/'non' pour les_deux_marquent",
   "cote_suggeree": nombre (la cote correspondante parmi celles fournies),
+  "probabilite_estimee": nombre entre 0.0 et 1.0 (estimation HONNÊTE de la probabilité réelle que ce pari gagne),
+  "edge_pourcent": nombre (peut être négatif — applique la formule ci-dessus avec cote_suggeree),
+  "risques_identifies": ["risque1", "risque2"] ou [],
+  "score_similarite": nombre entre 0 et 100 (cohérence avec les patterns gagnants),
   "tags_correspondants": ["tag1", "tag2"],
-  "raisonnement": "2-3 phrases maximum expliquant pourquoi ce match correspond",
+  "raisonnement": "synthèse 2-3 phrases : pourquoi cette opportunité ET pourquoi cette cote a de la value",
   "confiance": "faible" ou "moyenne" ou "elevee",
   "envoyer_alerte": true ou false
 }`
@@ -244,22 +306,88 @@ Cotes médianes de référence du match :
 ${construireSectionCotes(match)}
 ${construireContexteApiFootball(match)}
 
-QUESTION : Cette cote anormale est-elle une vraie opportunité de value bet, ou existe-t-il une raison valable (blessure majeure récente, suspension, erreur de ligne bookmaker, équipe B alignée) ?
-Est-elle cohérente avec les patterns de l'expert ?
+QUESTION : Cette cote anormale est-elle une VRAIE opportunité de value bet, ou existe-t-il une raison rationnelle (blessure majeure récente, suspension, erreur ligne bookmaker, équipe B alignée, motivation nulle) ?
+
+CONSIGNES :
+- probabilite_estimee = ta meilleure estimation HONNÊTE de la probabilité réelle (pas optimiste)
+- edge_pourcent = (probabilite_estimee × ${anomalie.cote_anomalie} − 1) × 100
+- Si edge < 5% → est_opportunite_reelle = false (l'anomalie n'a pas assez de value mathématique)
+- Si tu identifies une cause rationnelle à l'anomalie → est_opportunite_reelle = false
 
 Réponds UNIQUEMENT avec ce JSON (sans markdown, sans texte autour) :
 {
+  "analyse_forme": "1-2 phrases sur la dynamique récente (ou 'données insuffisantes')",
+  "analyse_h2h": "1-2 phrases sur le face-à-face (ou 'données insuffisantes')",
+  "analyse_compositions": "1-2 phrases sur absences/blessures (ou 'données insuffisantes')",
   "est_opportunite_reelle": true ou false,
   "score_valeur": nombre entre 0 et 100,
   "pari_recommande": "description courte du pari suggéré",
   "type_pari_recommande": "victoire_domicile | victoire_exterieur | nul | plus_de | moins_de | les_deux_marquent | handicap",
   "valeur_pari": "valeur précise ex: équipe, 2.5, oui, '${match.equipe_domicile} -1.5'",
-  "cote_recommandee": nombre (la cote anormale trouvée),
+  "cote_recommandee": nombre (la cote anormale trouvée = ${anomalie.cote_anomalie}),
+  "probabilite_estimee": nombre entre 0.0 et 1.0 (probabilité réelle estimée que ce pari gagne),
+  "edge_pourcent": nombre (peut être négatif),
+  "risques_identifies": ["risque1", "risque2"] ou [],
   "tags_correspondants": ["tag1", "tag2"],
-  "raisonnement": "2-3 phrases expliquant l'opportunité ou la raison de la fausse alerte",
+  "raisonnement": "2-3 phrases : pourquoi c'est de la value ou pourquoi c'est une fausse alerte",
   "confiance": "faible" ou "moyenne" ou "elevee",
   "raison_anomalie_probable": "genuine_value | erreur_bookmaker | blessure_non_integree | equipe_b | autre"
 }`
+
+// ─── Prompt critique (avocat du diable — 2ème passe) ─────────────────────────
+
+const construirePromptCritique = (match, analyseInitiale, options = {}) => {
+  const estAnomalie = options.type === 'anomalie'
+  const anomalieContexte = estAnomalie && options.anomalie
+    ? `\nL'analyse initiale concerne une COTE ANORMALE :
+- Outcome : ${options.anomalie.outcome}
+- Cote anormale : ${options.anomalie.cote_anomalie} sur ${options.anomalie.bookmaker}
+- Médiane marché : ${options.anomalie.cote_mediane} (écart +${options.anomalie.ecart_pourcent}%)\n`
+    : ''
+
+  return `Tu es un parieur expert SCEPTIQUE et EXIGEANT. Un autre analyste a produit l'avis ci-dessous et veut envoyer une alerte. Ton job : critiquer cet avis en cherchant ACTIVEMENT toutes les raisons pour lesquelles ce pari pourrait PERDRE.
+
+Tu joues l'avocat du diable. Ton rôle n'est PAS d'être consensuel — c'est de protéger le bankroll en éliminant les alertes faibles ou trop optimistes. Sois rigoureux, conservateur, factuel.
+
+═══ AVIS INITIAL À CRITIQUER ═══
+${JSON.stringify(analyseInitiale, null, 2)}
+
+═══ CONTEXTE DU MATCH ═══
+Rencontre : ${match.rencontre}
+Compétition : ${match.competition}
+Sport : ${match.sport}
+Date : ${new Date(match.date_match).toLocaleString('fr-FR')}
+${anomalieContexte}
+Cotes du marché (médiane multi-bookmakers) :
+${construireSectionCotes(match)}
+${construireContexteApiFootball(match)}
+
+═══ QUESTIONS DE CRITIQUE OBLIGATOIRES ═══
+1. La probabilité estimée (${analyseInitiale.probabilite_estimee}) est-elle réaliste ou trop OPTIMISTE ? Quels biais cognitifs pourraient l'avoir gonflée ?
+2. Les risques identifiés sont-ils suffisants ? Quels risques MAJEURS ont été OMIS (variance, contexte, motivation, blessure, météo, arbitre, etc.) ?
+3. Le raisonnement résiste-t-il à un examen rigoureux ? Y a-t-il des contradictions ou raccourcis logiques ?
+4. L'edge (${analyseInitiale.edge_pourcent}%) est-il vraiment exploitable, ou la variance court terme peut-elle le détruire ?
+5. Un pro du value betting placerait-il ce pari ? Ou attendrait-il une meilleure opportunité ?
+
+═══ VERDICTS POSSIBLES ═══
+- "valider" : l'analyse tient debout sur tous les points → on alerte
+- "ajuster" : l'analyse a des raisons d'être moins optimiste → on baisse la confiance + recalcule la prob
+- "rejeter" : l'analyse a des failles majeures → on N'ALERTE PAS
+
+Par DÉFAUT, sois prudent : en cas de doute, "ajuster" plutôt que "valider".
+
+Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks :
+{
+  "verdict": "valider" | "ajuster" | "rejeter",
+  "failles_majeures": ["faille1", "faille2"] ou [],
+  "biais_detectes": ["surconfiance" ou "recency_bias" ou "ignorance_variance" etc., ou vide],
+  "probabilite_critique": nombre 0.0-1.0 (TA propre estimation, plus conservatrice que l'avis initial),
+  "raison_critique": "1-2 phrases factuelles expliquant ton verdict"
+}`
+}
+
+// Prompt système critique — court et cacheable
+const PROMPT_SYSTEME_CRITIQUE = `Tu es un parieur professionnel sceptique. Ta seule mission : challenger les analyses de pari et protéger le bankroll. Tu privilégies toujours la prudence à l'optimisme. Tu rejettes les paris dont la probabilité est gonflée ou les risques sous-estimés. Tu réponds toujours en JSON valide sans markdown.`
 
 // ─── Utilitaire ───────────────────────────────────────────────────────────────
 
@@ -275,7 +403,7 @@ export const analyserMatch = async (match, parisGagnants, parisPerdants = [], st
   try {
     const message = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 1000,
+      max_tokens: 1800,
       system: [
         {
           type: 'text',
@@ -293,11 +421,35 @@ export const analyserMatch = async (match, parisGagnants, parisPerdants = [], st
   }
 }
 
+// ─── Critique (2ème passe) — synchrone, faible volume (uniquement candidats alerte) ─────────
+
+export const critiquerAnalyse = async (match, analyseInitiale, options = {}) => {
+  try {
+    const message = await client.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 800,
+      system: [
+        {
+          type: 'text',
+          text: PROMPT_SYSTEME_CRITIQUE,
+          cache_control: { type: 'ephemeral' },
+        },
+      ],
+      messages: [{ role: 'user', content: construirePromptCritique(match, analyseInitiale, options) }],
+    })
+
+    return JSON.parse(nettoyerJson(message.content[0].text.trim()))
+  } catch (erreur) {
+    console.error(`[analyseur] Erreur critique ${match.rencontre}:`, erreur.message)
+    return null
+  }
+}
+
 export const analyserCoteAnomale = async (match, anomalie, parisGagnants, parisPerdants = [], stats, nbUtilisateurs = null) => {
   try {
     const message = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 1000,
+      max_tokens: 1800,
       system: [
         {
           type: 'text',
@@ -322,7 +474,7 @@ export const creerRequeteBatchPattern = (match, promptSysteme, userId) => ({
   custom_id: `${idSafe(userId)}__pat__${idSafe(match.rencontre)}`,
   params: {
     model: 'claude-sonnet-4-20250514',
-    max_tokens: 1000,
+    max_tokens: 1800,
     system: [{ type: 'text', text: promptSysteme, cache_control: { type: 'ephemeral' } }],
     messages: [{ role: 'user', content: construirePromptUtilisateur(match) }],
   },
@@ -332,7 +484,7 @@ export const creerRequeteBatchAnomalie = (match, anomalie, promptSysteme, userId
   custom_id: `${idSafe(userId)}__ano__${idSafe(match.rencontre)}`,
   params: {
     model: 'claude-sonnet-4-20250514',
-    max_tokens: 1000,
+    max_tokens: 1800,
     system: [{ type: 'text', text: promptSysteme, cache_control: { type: 'ephemeral' } }],
     messages: [{ role: 'user', content: construirePromptUtilisateurAnomalie(match, anomalie) }],
   },

@@ -23,6 +23,19 @@ const CONFIANCE_LABEL = {
   faible:  '🔴 Faible',
 }
 
+// En-têtes par tier de conviction (Phase 4)
+const TIER_HEADER_PATTERN = {
+  forte:     '🔥🔥🔥 <b>CONVICTION FORTE — Opportunité Premium</b>',
+  bonne:     '🔥🔥 <b>Bonne Opportunité</b>',
+  surveille: '🔥 <b>À Surveiller</b>',
+}
+
+const TIER_HEADER_ANOMALIE = {
+  forte:     '🔥🔥🔥 <b>CONVICTION FORTE — Anomalie Premium</b>',
+  bonne:     '🔥🔥 <b>Bonne Anomalie de Marché</b>',
+  surveille: '🔥 <b>Anomalie à Surveiller</b>',
+}
+
 // Construit un libellé explicite sans ambiguïté à partir du type et de la valeur du pari
 const labelliserPari = (typePari, valeurPari) => {
   const v = echapperHtml(valeurPari ?? '')
@@ -70,6 +83,19 @@ const labelliserPari = (typePari, valeurPari) => {
   }
 }
 
+// Format compact d'un nombre signé en %, avec couleur via emoji
+const formaterEdge = (edge) => {
+  if (edge == null || !Number.isFinite(Number(edge))) return null
+  const valeur = Number(edge)
+  const signe = valeur > 0 ? '+' : ''
+  return `${signe}${valeur.toFixed(1)}%`
+}
+
+const formaterProbabilite = (prob) => {
+  if (prob == null || !Number.isFinite(Number(prob))) return null
+  return `${Math.round(Number(prob) * 100)}%`
+}
+
 const formaterMessage = (alerte) => {
   const emoji = EMOJI_SPORT[alerte.sport] ?? '🏆'
   const date = new Date(alerte.date_match).toLocaleString('fr-FR', {
@@ -85,13 +111,22 @@ const formaterMessage = (alerte) => {
   const confiance = CONFIANCE_LABEL[alerte.confiance] ?? '🟡 Moyenne'
   const libellePari = labelliserPari(alerte.type_pari, alerte.valeur_pari)
 
-  return `🎯 <b>BetEdge — Opportunité détectée</b>
+  const edgeStr = formaterEdge(alerte.edge_pourcent)
+  const probStr = formaterProbabilite(alerte.probabilite_estimee)
+  const ligneValue = (edgeStr && probStr)
+    ? `\n💎 <b>Edge : ${echapperHtml(edgeStr)}</b> (probabilité estimée ${echapperHtml(probStr)} vs cote ${cote})`
+    : ''
+
+  const headerTier = TIER_HEADER_PATTERN[alerte.tier] ?? TIER_HEADER_PATTERN.surveille
+
+  return `${headerTier}
+🎯 <i>BetEdge — Pattern matching</i>
 
 ${emoji} <b>${echapperHtml(alerte.rencontre)}</b> — ${echapperHtml(alerte.competition)}
 📅 ${echapperHtml(date)}
 
 💡 <b>Pari suggéré :</b> ${libellePari}
-💰 <b>Cote sur le marché :</b> ${cote}
+💰 <b>Cote sur le marché :</b> ${cote}${ligneValue}
 
 📊 Similarité avec tes patterns : <b>${echapperHtml(alerte.score_similarite)}/100</b>
 🔮 Confiance du bot : <b>${echapperHtml(confiance)}</b>
@@ -117,7 +152,16 @@ const formaterMessageAnomalie = (alerte) => {
   const confiance = CONFIANCE_LABEL[alerte.confiance] ?? '🟡 Moyenne'
   const libellePari = labelliserPari(alerte.type_pari, alerte.valeur_pari)
 
-  return `⚡ <b>BetEdge — Cote Anormale Détectée</b>
+  const edgeStr = formaterEdge(alerte.edge_pourcent)
+  const probStr = formaterProbabilite(alerte.probabilite_estimee)
+  const ligneValue = (edgeStr && probStr)
+    ? `\n💎 <b>Edge : ${echapperHtml(edgeStr)}</b> (probabilité estimée ${echapperHtml(probStr)} vs cote ${echapperHtml(alerte.cote_marche)})`
+    : ''
+
+  const headerTier = TIER_HEADER_ANOMALIE[alerte.tier] ?? TIER_HEADER_ANOMALIE.surveille
+
+  return `${headerTier}
+⚡ <i>BetEdge — Détection d'anomalie</i>
 
 ${emoji} <b>${echapperHtml(alerte.rencontre)}</b> — ${echapperHtml(alerte.competition)}
 📅 ${echapperHtml(date)}
@@ -126,7 +170,7 @@ ${emoji} <b>${echapperHtml(alerte.rencontre)}</b> — ${echapperHtml(alerte.comp
 "${echapperHtml(alerte.outcome_anomalie)}" → médiane ${coteMediane} → trouvée à <b>${echapperHtml(alerte.cote_marche)}</b> sur ${bookmaker} (${ecart})
 
 💡 <b>Pari suggéré :</b> ${libellePari}
-💰 <b>Cote disponible :</b> ${echapperHtml(alerte.cote_marche)} vs marché à ${coteMediane}
+💰 <b>Cote disponible :</b> ${echapperHtml(alerte.cote_marche)} vs marché à ${coteMediane}${ligneValue}
 
 📊 Score de valeur : <b>${echapperHtml(alerte.score_valeur)}/100</b> | Anomalie : ${ecart}
 🔮 Confiance du bot : <b>${echapperHtml(confiance)}</b>
