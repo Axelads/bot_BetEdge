@@ -124,14 +124,29 @@ const authentifierPocketBase = async () => {
   }
 }
 
+// Essai gratuit 20 jours après inscription : on lit `users.created` via expand=user.
+// Décision business 2026-05-13 (cf. post-mortem-6mois.md, Priorité 1).
+const DUREE_ESSAI_JOURS = 20
+const MS_ESSAI = DUREE_ESSAI_JOURS * 24 * 60 * 60 * 1000
+
+const estEnEssai = (profil) => {
+  const created = profil?.expand?.user?.created
+  if (!created) return false
+  const debut = new Date(created).getTime()
+  if (Number.isNaN(debut)) return false
+  return (Date.now() - debut) <= MS_ESSAI
+}
+
 const recupererUtilisateursActifs = async () => {
   const reponse = await fetch(
-    `${process.env.POCKETBASE_URL}/api/collections/profils/records?perPage=200`,
+    `${process.env.POCKETBASE_URL}/api/collections/profils/records?perPage=200&expand=user`,
     { headers: { Authorization: tokenAdmin } }
   )
   if (!reponse.ok) throw new Error(`PocketBase erreur profils: HTTP ${reponse.status}`)
   const data = await reponse.json()
-  return (data.items ?? []).filter(p => p.telegram_chat_id && p.est_premium)
+  return (data.items ?? []).filter(
+    p => p.telegram_chat_id && (p.est_premium || estEnEssai(p))
+  )
 }
 
 const recupererParisGagnantsUtilisateur = async (userId) => {

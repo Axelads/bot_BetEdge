@@ -187,20 +187,36 @@ Le compte `ujotze4rf8qhs9k` utilise toujours les données agrégées (`sourceAgr
 Tout utilisateur ayant choisi `source_donnees = "communaute"` bénéficie du même dataset élargi.
 Le prompt Claude mentionne "communauté de N parieurs — données agrégées" dans les deux cas.
 
-## Gate Premium
+## Gate Premium (avec essai gratuit 20 jours)
 
-Seuls les utilisateurs ayant `est_premium = true` dans leur profil PocketBase reçoivent des alertes Telegram.
+Reçoivent les alertes Telegram :
+- les utilisateurs **abonnés** (`est_premium = true`)
+- **ET** les utilisateurs **en essai gratuit** (≤ 20 jours depuis `users.created`)
 
-Le filtre est appliqué dans `index.js` lors de la récupération des utilisateurs actifs :
+La requête `profils` inclut `expand=user` pour permettre le calcul de l'essai côté bot :
 
 ```js
-const utilisateursActifs = utilisateurs.filter(p => p.telegram_chat_id && p.est_premium)
+const DUREE_ESSAI_JOURS = 20
+const MS_ESSAI = DUREE_ESSAI_JOURS * 24 * 60 * 60 * 1000
+
+const estEnEssai = (profil) => {
+  const created = profil?.expand?.user?.created
+  if (!created) return false
+  return (Date.now() - new Date(created).getTime()) <= MS_ESSAI
+}
+
+// requête : /api/collections/profils/records?expand=user
+const utilisateursActifs = utilisateurs.filter(
+  p => p.telegram_chat_id && (p.est_premium || estEnEssai(p))
+)
 ```
 
-Un utilisateur sans abonnement actif ne reçoit aucune alerte, même si le bot détecte une opportunité correspondant à ses patterns.
+Un utilisateur sans abonnement actif et inscrit depuis plus de 20 jours ne reçoit aucune alerte, même si le bot détecte une opportunité correspondant à ses patterns.
 
-**Champ PocketBase requis :** collection `profils` → `est_premium` (Bool, default `false`)  
-**Mise à jour :** automatique via `sauvegarderStatutPremium()` dans `app/src/services/pocketbase.js` après achat Apple IAP.
+**Champ PocketBase requis :** collection `profils` → `est_premium` (Bool, default `false`)
+**Date d'essai :** lue depuis `users.created` (champ natif) — pas de migration schéma.
+**Mise à jour `est_premium` :** automatique via `sauvegarderStatutPremium()` dans `app/src/services/pocketbase.js` après achat Apple IAP.
+**Décision business :** cf. `tasks/post-mortem-6mois.md` Priorité 1 — bot = valeur de démonstration, pas mur.
 
 ## Variables d'environnement requises (Koyeb)
 
