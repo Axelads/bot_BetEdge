@@ -220,6 +220,39 @@ const construireContexteApiFootball = (match) => {
   return lignes.join('\n')
 }
 
+// Contexte minimal pour basketball / hockey / rugby (source api-sports.io v1)
+const construireContexteAutreSport = (match) => {
+  const ctx = match.contexte_api_sport
+  if (!ctx) return ''
+
+  const lignes = [`\nDonnées de contexte (source api-sports.io — ${ctx.sport}) :`]
+
+  if (ctx.ligue)  lignes.push(`- Ligue : ${ctx.ligue}${ctx.saison ? ` (saison ${ctx.saison})` : ''}`)
+
+  if (ctx.forme_domicile_h2h) {
+    lignes.push(`- Forme ${match.equipe_domicile} en H2H (5 derniers) : ${ctx.forme_domicile_h2h} (V=victoire D=défaite N=nul, plus récent en premier)`)
+  }
+  if (ctx.forme_exterieur_h2h) {
+    lignes.push(`- Forme ${match.equipe_exterieur} en H2H (5 derniers) : ${ctx.forme_exterieur_h2h}`)
+  }
+  if (ctx.h2h_5_derniers && ctx.h2h_5_derniers.length > 0) {
+    lignes.push(`- Historique H2H (${ctx.h2h_5_derniers.length} derniers) :`)
+    ctx.h2h_5_derniers.forEach(r => lignes.push(`  • ${r}`))
+  }
+
+  return lignes.join('\n')
+}
+
+// Dispatcher : foot → contexte riche (forme + H2H + blessures + lineups + prédictions API)
+// Autres sports → contexte minimal (forme + H2H). Tennis et "autre" → aucun enrichissement.
+const construireContexteSport = (match) => {
+  if (match.sport === 'football') return construireContexteApiFootball(match)
+  if (match.sport === 'basketball' || match.sport === 'hockey' || match.sport === 'rugby') {
+    return construireContexteAutreSport(match)
+  }
+  return ''
+}
+
 // Construit la section "cotes actuelles" en n'affichant que les marchés disponibles
 const construireSectionCotes = (match) => {
   const c = match.cotes ?? {}
@@ -257,7 +290,7 @@ Date : ${new Date(match.date_match).toLocaleString('fr-FR')}
 
 Cotes actuelles sur le marché (médiane multi-bookmakers) :
 ${construireSectionCotes(match)}
-${construireContexteApiFootball(match)}
+${construireContexteSport(match)}
 
 RAPPEL DE LA FORMULE EDGE :
   edge_pourcent = (probabilite_estimee × cote_suggeree − 1) × 100
@@ -304,7 +337,7 @@ ${anomalie.marge_marche !== null ? `- Marge best-available du marché H2H : ${an
 
 Cotes médianes de référence du match :
 ${construireSectionCotes(match)}
-${construireContexteApiFootball(match)}
+${construireContexteSport(match)}
 
 QUESTION : Cette cote anormale est-elle une VRAIE opportunité de value bet, ou existe-t-il une raison rationnelle (blessure majeure récente, suspension, erreur ligne bookmaker, équipe B alignée, motivation nulle) ?
 
@@ -360,7 +393,7 @@ Date : ${new Date(match.date_match).toLocaleString('fr-FR')}
 ${anomalieContexte}
 Cotes du marché (médiane multi-bookmakers) :
 ${construireSectionCotes(match)}
-${construireContexteApiFootball(match)}
+${construireContexteSport(match)}
 
 ═══ QUESTIONS DE CRITIQUE OBLIGATOIRES ═══
 1. La probabilité estimée (${analyseInitiale.probabilite_estimee}) est-elle réaliste ou trop OPTIMISTE ? Quels biais cognitifs pourraient l'avoir gonflée ?
@@ -516,7 +549,8 @@ export const verifierStatutBatch = async (batchId) => {
 export const recupererResultatsBatch = async (batchId) => {
   try {
     const resultats = {}
-    for await (const item of client.messages.batches.results(batchId)) {
+    const decoder = await client.messages.batches.results(batchId)
+    for await (const item of decoder) {
       if (item.result.type === 'succeeded') {
         const texte = item.result.message.content[0].text.trim()
         try {

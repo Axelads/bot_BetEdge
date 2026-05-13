@@ -8,6 +8,7 @@ dotenv.config()
 
 import { recupererMatchsAVenir } from './collecteurCotes.js'
 import { enrichirMatchsFootball } from './enrichisseurApiFootball.js'
+import { enrichirAutresSports } from './enrichisseurAutresSports.js'
 import {
   analyserMatch, analyserCoteAnomale, critiquerAnalyse,
   construirePromptSysteme, construirePromptSystemeAnomalie,
@@ -401,8 +402,9 @@ const lancerAnalyse = async () => {
       return
     }
 
-    // Enrichissement API-Football mutualisé (tous les utilisateurs en profitent)
+    // Enrichissement mutualisé (tous les utilisateurs en profitent)
     await enrichirMatchsFootball(matchsFiltres)
+    await enrichirAutresSports(matchsFiltres)
 
     let nbAlertesTotal = 0
     for (const profil of utilisateurs) {
@@ -445,8 +447,9 @@ const lancerAnalyseBatch = async () => {
       return
     }
 
-    // Enrichissement API-Football mutualisé entre tous les utilisateurs
+    // Enrichissement mutualisé entre tous les utilisateurs (foot + basket + hockey + rugby)
     await enrichirMatchsFootball(matchsFiltres)
+    await enrichirAutresSports(matchsFiltres)
 
     const toutesRequetes = []
     const contexte = {}
