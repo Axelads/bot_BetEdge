@@ -253,6 +253,19 @@ const construireContexteSport = (match) => {
   return ''
 }
 
+// Consignes de qualité d'analyse adaptées au niveau de données réellement disponible par sport.
+// Évite de forcer "confiance: faible" en NHL/NBA/rugby où blessures/lineups n'existent pas via api-sports.io.
+const consignesQualiteParSport = (sport) => {
+  if (sport === 'football') {
+    return `- Données attendues sur ce sport : forme, H2H, blessures, compositions, prédictions API. Si forme ET H2H ET (blessures OU compositions) sont absents → confiance = "faible" et envoyer_alerte = false.`
+  }
+  if (sport === 'basketball' || sport === 'hockey' || sport === 'rugby') {
+    return `- Données attendues sur ce sport (api-sports.io plan multi-sports) : UNIQUEMENT forme V/N/D + H2H. Blessures et lineups ne sont PAS disponibles — n'exige pas ces données et NE les mentionne PAS comme manquantes pour justifier "faible". Si forme + H2H sont cohérents et présents → confiance "moyenne" voire "elevee" si l'edge est solide.`
+  }
+  // tennis, "autre" — pas d'enrichissement contextuel disponible
+  return `- Données contextuelles non disponibles sur ce sport — base-toi uniquement sur les cotes du marché. Si tu ne peux pas estimer une probabilité honnête → confiance = "faible" et envoyer_alerte = false.`
+}
+
 // Construit la section "cotes actuelles" en n'affichant que les marchés disponibles
 const construireSectionCotes = (match) => {
   const c = match.cotes ?? {}
@@ -358,7 +371,7 @@ RAPPEL DE LA FORMULE EDGE :
   Ex : prob 0.55 × cote 1.70 = 0.935 → edge = -6.5% (cote trop basse, on passe)
 
 CONSIGNES :
-- Si tu n'as PAS assez d'infos contextuelles fiables (forme/blessures/H2H), mets confiance = "faible" et envoyer_alerte = false
+${consignesQualiteParSport(match.sport)}
 - probabilite_estimee doit être HONNÊTE : un favori clair = 0.55-0.70 max, jamais 0.85+
 - cote_suggeree doit être STRICTEMENT une des cotes affichées ci-dessus
 - Si edge_pourcent < 5 → envoyer_alerte = false même si patterns OK
@@ -455,9 +468,13 @@ Cotes du marché (médiane multi-bookmakers) :
 ${construireSectionCotes(match)}
 ${construireContexteSport(match)}
 
+═══ NIVEAU DE DONNÉES DISPONIBLE SUR CE SPORT (${match.sport}) ═══
+${consignesQualiteParSport(match.sport)}
+IMPORTANT : ne rejette PAS l'analyse au motif que des données non disponibles sur ce sport manquent. Juge sur ce qui existe réellement (forme, H2H, cotes, edge), pas sur l'idéal foot.
+
 ═══ QUESTIONS DE CRITIQUE OBLIGATOIRES ═══
 1. La probabilité estimée (${analyseInitiale.probabilite_estimee}) est-elle réaliste ou trop OPTIMISTE ? Quels biais cognitifs pourraient l'avoir gonflée ?
-2. Les risques identifiés sont-ils suffisants ? Quels risques MAJEURS ont été OMIS (variance, contexte, motivation, blessure, météo, arbitre, etc.) ?
+2. Les risques identifiés sont-ils suffisants ? Quels risques MAJEURS ont été OMIS — UNIQUEMENT parmi ceux pertinents pour ce sport et dont les données sont disponibles ?
 3. Le raisonnement résiste-t-il à un examen rigoureux ? Y a-t-il des contradictions ou raccourcis logiques ?
 4. L'edge (${analyseInitiale.edge_pourcent}%) est-il vraiment exploitable, ou la variance court terme peut-elle le détruire ?
 5. Un pro du value betting placerait-il ce pari ? Ou attendrait-il une meilleure opportunité ?
