@@ -93,13 +93,16 @@ const estCompetitionActive = (sport) => {
 
 // Marchés OddsAPI dynamiques par sport.
 // Chaque marché = 1 crédit OddsAPI par requête (× 1 région).
-// Foot = 9 marchés (~10500 crédits/mois sur le plan 20k) | autres sports = 3 marchés.
-const getMarchesPourSport = (cleSport) => {
-  if (cleSport.startsWith('soccer')) {
-    return 'h2h,totals,spreads,btts,draw_no_bet,double_chance,team_totals,alternate_totals,correct_score'
-  }
-  return 'h2h,totals,spreads'
-}
+//
+// ⚠️ 2026-05-14 19h — OddsAPI a déprécié sur l'endpoint bulk /sports/{key}/odds
+// les marchés foot "avancés" (btts, draw_no_bet, double_chance, team_totals,
+// alternate_totals, correct_score). Ils renvoient maintenant INVALID_MARKET (422)
+// → la requête entière échouait → 0 match foot collecté depuis cette dépréciation.
+// Ces marchés restent disponibles sur l'endpoint /events/{id}/odds (per-match,
+// 10 crédits/match) si besoin de les réintroduire plus tard.
+//
+// Tous sports = h2h + totals + spreads (3 crédits/appel).
+const getMarchesPourSport = () => 'h2h,totals,spreads'
 
 const recupererMatchsSport = async (sport) => {
   const marches = getMarchesPourSport(sport.cle)

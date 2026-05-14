@@ -690,7 +690,7 @@ const verifierResultatsBatch = async () => {
 
 console.log('🚀 BetEdge Bot — Démarrage...')
 console.log('[bot] Optimisations actives : prompt caching + batch 9h + pré-filtre cotes + 2 cycles/jour')
-console.log('[bot] Marchés OddsAPI : foot=h2h+totals+spreads+btts+draw_no_bet+double_chance+team_totals+alternate_totals+correct_score (9 crédits) | autres=h2h+totals+spreads (3 crédits)')
+console.log('[bot] Marchés OddsAPI : h2h+totals+spreads (3 crédits/appel — endpoint bulk ne supporte plus les marchés foot avancés depuis 2026-05-14)')
 console.log('[bot] OddsAPI : max 25 compétitions × 2 cycles × ~6.5 marchés ≈ 10500 crédits/mois (plan $30/mois = 20k crédits)')
 console.log('[bot] Buteurs (top 5 ligues UE) : OddsAPI /events/{id}/odds — 10 crédits/match × ~5-10 matchs/cycle × 2 ≈ 3000-6000 crédits/mois')
 console.log('[bot] Passeurs décisifs (top 5 ligues UE) : API-Football /odds — ~10-20 req/jour additionnels (plan Free 100/jour)')
