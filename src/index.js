@@ -691,6 +691,14 @@ await envoyerMessageDemarrage()
 
 // PAS d'analyse au démarrage — évite les requêtes OddsAPI imprévues à chaque redémarrage Koyeb
 
+// Trigger manuel : `node src/index.js --force-cycle` lance immédiatement un cycle synchrone
+// puis exit. Utile en local pour tester un fix entre 2 crons. À NE PAS activer sur Koyeb.
+if (process.argv.includes('--force-cycle')) {
+  console.log('[bot] --force-cycle détecté → lancement immédiat du cycle synchrone')
+  await lancerAnalyse()
+  process.exit(0)
+}
+
 // 9h Paris (7h UTC) → cycle BATCH (-50% coût Anthropic, résultats traités à 10h30)
 cron.schedule('0 7 * * *', () => {
   lancerAnalyseBatch()
