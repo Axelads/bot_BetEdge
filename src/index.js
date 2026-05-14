@@ -316,8 +316,10 @@ const analyserPourUtilisateur = async (profil, tousMatchsAVenir) => {
 
       if (analyse && doitEnvoyerAlerte(analyse)) {
         // Phase 2 — Critique avocat du diable (2ème passe Claude)
-        const critique = await critiquerAnalyse(match, analyse, { type: 'pattern' })
-        const analyseFinale = appliquerCritique(analyse, critique)
+        // Bypass en mode permissif : on garde l'analyse initiale telle quelle.
+        const permissif = process.env.MODE_PERMISSIF === 'true'
+        const critique = permissif ? { verdict: 'valider' } : await critiquerAnalyse(match, analyse, { type: 'pattern' })
+        const analyseFinale = permissif ? analyse : appliquerCritique(analyse, critique)
 
         if (!analyseFinale) {
           console.log(`[bot] ❌ Critique rejette: ${match.rencontre} — ${critique?.raison_critique ?? 'verdict rejeter'}`)
@@ -359,8 +361,9 @@ const analyserPourUtilisateur = async (profil, tousMatchsAVenir) => {
 
         if (doitEnvoyerAlerteAnomalie(anomalie, analyseAnomalie)) {
           // Phase 2 — Critique avocat du diable (2ème passe Claude)
-          const critique = await critiquerAnalyse(match, analyseAnomalie, { type: 'anomalie', anomalie })
-          const analyseFinale = appliquerCritique(analyseAnomalie, critique)
+          const permissifAno = process.env.MODE_PERMISSIF === 'true'
+          const critique = permissifAno ? { verdict: 'valider' } : await critiquerAnalyse(match, analyseAnomalie, { type: 'anomalie', anomalie })
+          const analyseFinale = permissifAno ? analyseAnomalie : appliquerCritique(analyseAnomalie, critique)
 
           if (!analyseFinale) {
             console.log(`[bot] ❌ Critique rejette anomalie: ${match.rencontre} — ${critique?.raison_critique ?? 'verdict rejeter'}`)

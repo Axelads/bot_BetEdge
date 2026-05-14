@@ -221,17 +221,31 @@ export const calculerEdge = (probabiliteEstimee, cote) => {
 }
 
 // Détermine si une alerte pattern doit être envoyée
-// Critères cumulatifs : edge mathématique + cohérence patterns + confiance suffisante
+// Mode permissif activable via MODE_PERMISSIF=true (env var) — pour générer des alertes
+// même quand le pipeline value-betting strict rejette tout (typique fin de saison foot).
+// ⚠️ Le mode permissif ignore confiance='faible' et envoyer_alerte=false, et abaisse les seuils.
+// La doctrine value-betting n'est PAS respectée — utiliser uniquement en mode démo/test.
 export const doitEnvoyerAlerte = (analyse) => {
-  if (!analyse || analyse.envoyer_alerte !== true) return false
-  if (analyse.confiance === 'faible') return false
-  if (analyse.score_similarite < 60) return false
+  if (!analyse) return false
+
+  const permissif = process.env.MODE_PERMISSIF === 'true'
+  const seuilScore = permissif ? 45 : 60
+  const seuilProb  = permissif ? 0.35 : PROB_MIN_PATTERN
+  const seuilEdge  = permissif ? 0   : EDGE_MIN
+
+  // En mode strict : Claude doit explicitement valider via envoyer_alerte + confiance ≠ faible
+  if (!permissif) {
+    if (analyse.envoyer_alerte !== true) return false
+    if (analyse.confiance === 'faible') return false
+  }
+
+  if (analyse.score_similarite < seuilScore) return false
 
   const prob = Number(analyse.probabilite_estimee)
-  if (!Number.isFinite(prob) || prob < PROB_MIN_PATTERN) return false
+  if (!Number.isFinite(prob) || prob < seuilProb) return false
 
   const edge = calculerEdge(analyse.probabilite_estimee, analyse.cote_suggeree)
-  if (edge == null || edge < EDGE_MIN) return false
+  if (edge == null || edge < seuilEdge) return false
 
   return true
 }
@@ -303,10 +317,17 @@ export const preparerAlerte = (match, analyse) => {
 
 // Détermine si une alerte de type "cote anormale" doit être envoyée
 export const doitEnvoyerAlerteAnomalie = (anomalie, analyseAI) => {
-  if (!anomalie || anomalie.score_anomalie < 60) return false
-  if (!analyseAI || analyseAI.est_opportunite_reelle !== true) return false
-  if (analyseAI.confiance === 'faible') return false
-  if (analyseAI.score_valeur < 65) return false
+  const permissif = process.env.MODE_PERMISSIF === 'true'
+  const seuilAnomalie = permissif ? 45 : 60
+  const seuilValeur   = permissif ? 40 : 65
+
+  if (!anomalie || anomalie.score_anomalie < seuilAnomalie) return false
+  if (!analyseAI) return false
+  if (!permissif) {
+    if (analyseAI.est_opportunite_reelle !== true) return false
+    if (analyseAI.confiance === 'faible') return false
+  }
+  if (analyseAI.score_valeur < seuilValeur) return false
 
   const prob = Number(analyseAI.probabilite_estimee)
   if (!Number.isFinite(prob) || prob < PROB_MIN_ANOMALIE) return false
