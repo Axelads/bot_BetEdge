@@ -254,10 +254,14 @@ const construireContexteSport = (match) => {
 }
 
 // Consignes de qualité d'analyse adaptées au niveau de données réellement disponible par sport.
-// Évite de forcer "confiance: faible" en NHL/NBA/rugby où blessures/lineups n'existent pas via api-sports.io.
+// Réaliste : les rate limits API-Football (10/min Free) laissent souvent des matchs avec
+// blessures/lineups absents même pendant la saison. On accepte "moyenne" si forme + H2H
+// sont solides, sans exiger blessures/lineups (qui restent un bonus, pas un prérequis).
 const consignesQualiteParSport = (sport) => {
   if (sport === 'football') {
-    return `- Données attendues sur ce sport : forme, H2H, blessures, compositions, prédictions API. Si forme ET H2H ET (blessures OU compositions) sont absents → confiance = "faible" et envoyer_alerte = false.`
+    return `- Données minimales attendues : forme récente + H2H (5 derniers). Blessures, compositions et prédictions API sont un BONUS si présents — n'exige pas leur présence pour mettre une confiance "moyenne".
+- Si forme + H2H présents et cohérents → confiance "moyenne" (voire "elevee" si edge ≥ 10% et patterns clairs)
+- Si forme ET H2H absents (les deux) → confiance "faible" et envoyer_alerte = false`
   }
   if (sport === 'basketball' || sport === 'hockey' || sport === 'rugby') {
     return `- Données attendues sur ce sport (api-sports.io plan multi-sports) : UNIQUEMENT forme V/N/D + H2H. Blessures et lineups ne sont PAS disponibles — n'exige pas ces données et NE les mentionne PAS comme manquantes pour justifier "faible". Si forme + H2H sont cohérents et présents → confiance "moyenne" voire "elevee" si l'edge est solide.`

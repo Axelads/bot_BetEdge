@@ -13,10 +13,10 @@ dotenv.config()
 const SPORTS_SURVEILLES = [
   // ── Football — Ligues nationales ──────────────────────────────────────────
   { cle: 'soccer_france_ligue_one',                 label: 'Ligue 1',              debut: 810,  fin: 525 },
-  { cle: 'soccer_epl',                              label: 'Premier League',        debut: 807,  fin: 530 },
-  { cle: 'soccer_efl_champ',                        label: 'Championship',          debut: 805,  fin: 530 },
-  { cle: 'soccer_spain_la_liga',                    label: 'La Liga',              debut: 810,  fin: 530 },
-  { cle: 'soccer_germany_bundesliga',               label: 'Bundesliga',            debut: 818,  fin: 525 },
+  { cle: 'soccer_epl',                              label: 'Premier League',        debut: 807,  fin: 531 },
+  { cle: 'soccer_efl_champ',                        label: 'Championship',          debut: 805,  fin: 531 },
+  { cle: 'soccer_spain_la_liga',                    label: 'La Liga',              debut: 810,  fin: 531 },
+  { cle: 'soccer_germany_bundesliga',               label: 'Bundesliga',            debut: 818,  fin: 531 },
   { cle: 'soccer_italy_serie_a',                    label: 'Serie A',              debut: 812,  fin: 530 },
   { cle: 'soccer_portugal_primeira_liga',           label: 'Primeira Liga',        debut: 808,  fin: 525 },
   { cle: 'soccer_netherlands_eredivisie',           label: 'Eredivisie',           debut: 808,  fin: 525 },
