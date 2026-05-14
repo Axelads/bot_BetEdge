@@ -5,7 +5,7 @@ dotenv.config()
 // Sport keys OddsAPI des 5 grands championnats européens — buteurs activés UNIQUEMENT sur ces matchs
 // pour économiser les crédits (10 crédits/match via l'endpoint /events/{id}/odds, vs 1 crédit/marché normal).
 const TOP_5_CHAMPIONNATS = new Set([
-  'soccer_france_ligue1',
+  'soccer_france_ligue_one',
   'soccer_epl',
   'soccer_spain_la_liga',
   'soccer_germany_bundesliga',
@@ -84,16 +84,30 @@ const recupererButeursMatch = async (match) => {
 }
 
 // Enrichit les matchs des 5 grands championnats avec les cotes "buteur à tout moment".
-// Coût : 10 crédits/match × ~5-10 matchs top 5 / cycle × 2 cycles × 30 ≈ 3000-6000 crédits/mois.
+// Filtre matchs imminents (<30h) : la fenêtre de collecte est 72h, mais les buteurs coûtent
+// 10 crédits/match → on les enrichit seulement quand le match approche. Les matchs plus lointains
+// seront enrichis au cycle suivant.
+// Coût : 10 crédits/match × ~5-10 matchs top 5 imminents / cycle × 2 cycles × 30 ≈ 3000-6000 crédits/mois.
+const HEURES_FENETRE_ENRICHISSEMENT = 30
+
+const estMatchImminent = (match) => {
+  const maintenant = Date.now()
+  const dateMatch = new Date(match.date_match).getTime()
+  const delta = dateMatch - maintenant
+  return delta >= 0 && delta <= HEURES_FENETRE_ENRICHISSEMENT * 60 * 60 * 1000
+}
+
 export const enrichirButeurs = async (matchs) => {
-  const matchsCibles = matchs.filter(m => TOP_5_CHAMPIONNATS.has(m.oddsapi_sport_key))
+  const matchsCibles = matchs.filter(m =>
+    TOP_5_CHAMPIONNATS.has(m.oddsapi_sport_key) && estMatchImminent(m)
+  )
 
   if (matchsCibles.length === 0) {
-    console.log('[buteurs] Aucun match top 5 — enrichissement ignoré')
+    console.log('[buteurs] Aucun match top 5 imminent (<30h) — enrichissement ignoré')
     return matchs
   }
 
-  console.log(`[buteurs] Enrichissement de ${matchsCibles.length} match(s) top 5 via OddsAPI events (10 crédits/match)`)
+  console.log(`[buteurs] Enrichissement de ${matchsCibles.length} match(s) top 5 imminent(s) via OddsAPI events (10 crédits/match)`)
 
   for (const match of matchsCibles) {
     const buteurs = await recupererButeursMatch(match)

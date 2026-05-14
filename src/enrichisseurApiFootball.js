@@ -325,8 +325,11 @@ export const enrichirMatchsFootball = async (matchs) => {
         lineups:                 lineups,
       }
 
-      // Passeurs décisifs — top 5 ligues uniquement (économie quota Free)
-      if (TOP_5_LIGUES_API.has(fixture.league.id)) {
+      // Passeurs décisifs — top 5 ligues + match imminent (<30h) uniquement (économie quota Free)
+      // La fenêtre de collecte est 72h, mais 1 appel /odds par match dépasserait le quota
+      // API-Football Free (100/jour) si on enrichissait tous les matchs week-end dès le jeudi.
+      const heuresAvantMatch = (new Date(match.date_match).getTime() - Date.now()) / (60 * 60 * 1000)
+      if (TOP_5_LIGUES_API.has(fixture.league.id) && heuresAvantMatch >= 0 && heuresAvantMatch <= 30) {
         const passeurs = await recupererPasseurs(fixtureId)
         if (passeurs && passeurs.length > 0) {
           match.passeurs = passeurs
