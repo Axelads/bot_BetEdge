@@ -322,7 +322,15 @@ const analyserPourUtilisateur = async (profil, tousMatchsAVenir) => {
         if (!analyseFinale) {
           console.log(`[bot] ❌ Critique rejette: ${match.rencontre} — ${critique?.raison_critique ?? 'verdict rejeter'}`)
         } else if (!doitEnvoyerAlerte(analyseFinale)) {
+          const probIni = Number(analyse.probabilite_estimee).toFixed(2)
+          const probFin = Number(analyseFinale.probabilite_estimee).toFixed(2)
+          const cote = Number(analyse.cote_suggeree).toFixed(2)
+          const edgeIni = ((Number(analyse.probabilite_estimee) * Number(analyse.cote_suggeree) - 1) * 100).toFixed(1)
+          const edgeFin = ((Number(analyseFinale.probabilite_estimee) * Number(analyse.cote_suggeree) - 1) * 100).toFixed(1)
           console.log(`[bot] ❌ Après ajustement critique, seuils non atteints: ${match.rencontre}`)
+          console.log(`[bot]    Pari: ${analyse.pari_recommande} @ cote ${cote}`)
+          console.log(`[bot]    Verdict critique: ${critique?.verdict} — "${critique?.raison_critique ?? ''}"`)
+          console.log(`[bot]    Prob: ${probIni} → ${probFin} | Edge: ${edgeIni}% → ${edgeFin}% | Score: ${analyse.score_similarite} → ${analyseFinale.score_similarite} | Confiance: ${analyse.confiance} → ${analyseFinale.confiance}`)
         } else {
           const alerte = { ...preparerAlerte(match, analyseFinale), sport: match.sport, user: userId }
           const tier = calculerTier({ score: alerte.score_similarite, edge: alerte.edge_pourcent, confiance: analyseFinale.confiance })

@@ -255,9 +255,16 @@ export const appliquerCritique = (analyseInitiale, critique) => {
 
   // Pénalité score adoucie de ×0.7 → ×0.85 : un "ajuster" n'est pas un quasi-rejet.
   // Score 75 → 64 (passe le seuil 60), score 70 → 60 (limite), score 65 → 55 (bloqué).
-  // La baisse de confiance d'un cran (ligne suivante) garde un filet sécurité.
   const scoreAjuste = Math.round((analyseInitiale.score_similarite ?? 0) * 0.85)
-  const confianceAjustee = analyseInitiale.confiance === 'elevee' ? 'moyenne' : 'faible'
+
+  // Si après ajustement de prob l'edge reste ≥ 7% (marge confortable au-dessus du seuil 5%),
+  // on NE baisse PAS la confiance d'un cran. Sinon double pénalité (prob baissée + conf baissée)
+  // élimine des paris où le Critique reste mesuré (ex: Buffalo NHL, edge ajusté 9% mais conf moy→faible).
+  const coteSugg = Number(analyseInitiale.cote_suggeree)
+  const edgeAjuste = calculerEdge(probFinale, coteSugg) ?? 0
+  const confianceAjustee = edgeAjuste >= 7
+    ? analyseInitiale.confiance
+    : (analyseInitiale.confiance === 'elevee' ? 'moyenne' : 'faible')
   const raison = critique.raison_critique ? ` [Critique: ${critique.raison_critique}]` : ''
 
   return {
