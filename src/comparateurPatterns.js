@@ -224,14 +224,15 @@ export const calculerEdge = (probabiliteEstimee, cote) => {
 // Mode permissif activable via MODE_PERMISSIF=true (env var) — pour générer des alertes
 // même quand le pipeline value-betting strict rejette tout (typique fin de saison foot).
 // ⚠️ Le mode permissif ignore confiance='faible' et envoyer_alerte=false, et abaisse les seuils.
-// La doctrine value-betting n'est PAS respectée — utiliser uniquement en mode démo/test.
+// MAIS conserve TOUJOURS un plancher minimum pour la qualité (edge >= 2%, score >= 45).
+// La doctrine value-betting n'est PAS respectée en permissif — utiliser uniquement en mode démo/test.
 export const doitEnvoyerAlerte = (analyse) => {
   if (!analyse) return false
 
   const permissif = process.env.MODE_PERMISSIF === 'true'
   const seuilScore = permissif ? 45 : 60
   const seuilProb  = permissif ? 0.35 : PROB_MIN_PATTERN
-  const seuilEdge  = permissif ? 0   : EDGE_MIN
+  const seuilEdge  = permissif ? 2   : EDGE_MIN  // Plancher minimum 2% même en permissif (fiabilité)
 
   // En mode strict : Claude doit explicitement valider via envoyer_alerte + confiance ≠ faible
   if (!permissif) {
@@ -239,6 +240,7 @@ export const doitEnvoyerAlerte = (analyse) => {
     if (analyse.confiance === 'faible') return false
   }
 
+  // Validations communes strict/permissif — fondamentales pour la qualité
   if (analyse.score_similarite < seuilScore) return false
 
   const prob = Number(analyse.probabilite_estimee)

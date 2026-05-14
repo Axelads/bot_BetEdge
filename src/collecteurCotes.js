@@ -516,17 +516,15 @@ const formaterMatch = (match, sport) => {
   }
 }
 
-const LIMITE_COMPETITIONS_PAR_CYCLE = 25
-
 export const recupererMatchsAVenir = async () => {
   console.log(`[collecteur] Récupération des matchs des prochaines ${HEURES_FENETRE_MATCHS}h...`)
   const tousLesMatchs = []
 
   const sportsActifs = SPORTS_SURVEILLES.filter(estCompetitionActive)
   const sportsIgnores = SPORTS_SURVEILLES.length - sportsActifs.length
-  const sportsAInterroger = sportsActifs.slice(0, LIMITE_COMPETITIONS_PAR_CYCLE)
+  const sportsAInterroger = sportsActifs
 
-  console.log(`[collecteur] ${sportsActifs.length} compétitions actives (${sportsIgnores} hors saison) → interrogation des ${sportsAInterroger.length} premières`)
+  console.log(`[collecteur] ${sportsActifs.length} compétitions actives (${sportsIgnores} hors saison) → interrogation de toutes`)
 
   for (const sport of sportsAInterroger) {
     const matchs = await recupererMatchsSport(sport)
