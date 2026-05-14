@@ -253,7 +253,10 @@ export const appliquerCritique = (analyseInitiale, critique) => {
     ? Math.min(probCritique, Number(analyseInitiale.probabilite_estimee ?? 1))
     : analyseInitiale.probabilite_estimee
 
-  const scoreAjuste = Math.round((analyseInitiale.score_similarite ?? 0) * 0.7)
+  // Pénalité score adoucie de ×0.7 → ×0.85 : un "ajuster" n'est pas un quasi-rejet.
+  // Score 75 → 64 (passe le seuil 60), score 70 → 60 (limite), score 65 → 55 (bloqué).
+  // La baisse de confiance d'un cran (ligne suivante) garde un filet sécurité.
+  const scoreAjuste = Math.round((analyseInitiale.score_similarite ?? 0) * 0.85)
   const confianceAjustee = analyseInitiale.confiance === 'elevee' ? 'moyenne' : 'faible'
   const raison = critique.raison_critique ? ` [Critique: ${critique.raison_critique}]` : ''
 
