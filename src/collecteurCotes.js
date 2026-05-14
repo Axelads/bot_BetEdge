@@ -100,10 +100,13 @@ const estCompetitionActive = (sport) => {
   return true // pas de dates définies → toujours actif
 }
 
-// Marchés OddsAPI dynamiques par sport — `btts` n'existe que pour le football
-// Chaque marché = 1 crédit OddsAPI par requête (× 1 région). Foot=4, autres=3.
+// Marchés OddsAPI dynamiques par sport.
+// Chaque marché = 1 crédit OddsAPI par requête (× 1 région).
+// Foot = 9 marchés (~10500 crédits/mois sur le plan 20k) | autres sports = 3 marchés.
 const getMarchesPourSport = (cleSport) => {
-  if (cleSport.startsWith('soccer')) return 'h2h,totals,spreads,btts'
+  if (cleSport.startsWith('soccer')) {
+    return 'h2h,totals,spreads,btts,draw_no_bet,double_chance,team_totals,alternate_totals,correct_score'
+  }
   return 'h2h,totals,spreads'
 }
 
@@ -273,15 +276,195 @@ const extraireCotesBtts = (bookmakers) => {
   }
 }
 
+// Draw No Bet (Pari Sans Nul) — soccer uniquement
+// Outcomes : {name: nomDomicile, price} et {name: nomExterieur, price}
+const extraireCotesDrawNoBet = (bookmakers, nomDomicile, nomExterieur) => {
+  const cotesDom = []
+  const cotesExt = []
+  for (const bookmaker of bookmakers) {
+    const marche = bookmaker.markets?.find(m => m.key === 'draw_no_bet')
+    if (!marche) continue
+    const dom = marche.outcomes?.find(o => o.name === nomDomicile)
+    const ext = marche.outcomes?.find(o => o.name === nomExterieur)
+    if (dom) cotesDom.push(dom.price)
+    if (ext) cotesExt.push(ext.price)
+  }
+  return {
+    domicile:  cotesDom.length > 0 ? Math.round(calculerMediane(cotesDom) * 100) / 100 : null,
+    exterieur: cotesExt.length > 0 ? Math.round(calculerMediane(cotesExt) * 100) / 100 : null,
+  }
+}
+
+// Double Chance — outcomes : "{home}/Draw", "Draw/{away}", "{home}/{away}".
+// Classification défensive : on identifie chaque outcome via ce qu'il contient (domicile, extérieur, draw).
+const extraireCotesDoubleChance = (bookmakers, nomDomicile, nomExterieur) => {
+  const cotes1X = []
+  const cotesX2 = []
+  const cotes12 = []
+  for (const bookmaker of bookmakers) {
+    const marche = bookmaker.markets?.find(m => m.key === 'double_chance')
+    if (!marche) continue
+    for (const outcome of marche.outcomes ?? []) {
+      const nom = `${outcome.name ?? ''} ${outcome.description ?? ''}`
+      const contientDom = nom.includes(nomDomicile)
+      const contientExt = nom.includes(nomExterieur)
+      const contientNul = /draw|nul/i.test(nom)
+      if (contientDom && contientNul && !contientExt)      cotes1X.push(outcome.price)
+      else if (contientExt && contientNul && !contientDom) cotesX2.push(outcome.price)
+      else if (contientDom && contientExt && !contientNul) cotes12.push(outcome.price)
+    }
+  }
+  return {
+    dom_nul: cotes1X.length > 0 ? Math.round(calculerMediane(cotes1X) * 100) / 100 : null,
+    nul_ext: cotesX2.length > 0 ? Math.round(calculerMediane(cotesX2) * 100) / 100 : null,
+    dom_ext: cotes12.length > 0 ? Math.round(calculerMediane(cotes12) * 100) / 100 : null,
+  }
+}
+
+// Team Totals (buts par équipe) — outcomes : {name: "Over"|"Under", description: nom_equipe, point, price}
+// On retient la ligne médiane (mode) par équipe, puis la cote médiane Over/Under sur cette ligne.
+const extraireCotesTeamTotals = (bookmakers, nomDomicile, nomExterieur) => {
+  const pointsDom = []
+  const pointsExt = []
+  for (const bookmaker of bookmakers) {
+    const marche = bookmaker.markets?.find(m => m.key === 'team_totals')
+    if (!marche) continue
+    for (const outcome of marche.outcomes ?? []) {
+      if (outcome.point === undefined) continue
+      if (outcome.description === nomDomicile)  pointsDom.push(outcome.point)
+      if (outcome.description === nomExterieur) pointsExt.push(outcome.point)
+    }
+  }
+
+  const vide = { ligne: null, over: null, under: null }
+  if (pointsDom.length === 0 && pointsExt.length === 0) {
+    return { domicile: vide, exterieur: vide }
+  }
+
+  const ligneDom = pointsDom.length > 0 ? calculerMode(pointsDom) : null
+  const ligneExt = pointsExt.length > 0 ? calculerMode(pointsExt) : null
+
+  const overDom = [], underDom = [], overExt = [], underExt = []
+  for (const bookmaker of bookmakers) {
+    const marche = bookmaker.markets?.find(m => m.key === 'team_totals')
+    if (!marche) continue
+    for (const outcome of marche.outcomes ?? []) {
+      if (outcome.point === undefined) continue
+      if (outcome.description === nomDomicile && outcome.point === ligneDom) {
+        if (outcome.name === 'Over')  overDom.push(outcome.price)
+        if (outcome.name === 'Under') underDom.push(outcome.price)
+      } else if (outcome.description === nomExterieur && outcome.point === ligneExt) {
+        if (outcome.name === 'Over')  overExt.push(outcome.price)
+        if (outcome.name === 'Under') underExt.push(outcome.price)
+      }
+    }
+  }
+
+  return {
+    domicile: {
+      ligne: ligneDom,
+      over:  overDom.length > 0  ? Math.round(calculerMediane(overDom) * 100) / 100  : null,
+      under: underDom.length > 0 ? Math.round(calculerMediane(underDom) * 100) / 100 : null,
+    },
+    exterieur: {
+      ligne: ligneExt,
+      over:  overExt.length > 0  ? Math.round(calculerMediane(overExt) * 100) / 100  : null,
+      under: underExt.length > 0 ? Math.round(calculerMediane(underExt) * 100) / 100 : null,
+    },
+  }
+}
+
+// Score exact (Correct Score) — soccer uniquement.
+// Outcomes : format variable selon bookmakers — "1 - 0", "PSG 2-1 Lyon", "Draw 1-1", "Any Other Home Win", etc.
+// On normalise au format "X-Y" (home-away) et on collecte la cote médiane par score.
+const parserScoreExact = (outcome, nomDomicile, nomExterieur) => {
+  const nom = outcome.name ?? ''
+  const nomLower = nom.toLowerCase()
+
+  // Cas "Any Other" — pas un score précis mais un bucket
+  if (/any\s*other.*home|autre.*dom/i.test(nomLower)) return 'autre_dom'
+  if (/any\s*other.*away|autre.*ext/i.test(nomLower)) return 'autre_ext'
+  if (/any\s*other.*draw|autre.*nul/i.test(nomLower)) return 'autre_nul'
+
+  // Extraction des deux nombres séparés par - ou –
+  const m = nom.match(/(\d+)\s*[-–]\s*(\d+)/)
+  if (!m) return null
+  const a = parseInt(m[1], 10)
+  const b = parseInt(m[2], 10)
+
+  // Si le nom contient les deux équipes, l'ordre dans le nom indique home/away
+  const indexDom = nom.indexOf(nomDomicile)
+  const indexExt = nom.indexOf(nomExterieur)
+  if (indexDom >= 0 && indexExt >= 0) {
+    return indexDom < indexExt ? `${a}-${b}` : `${b}-${a}`
+  }
+  // Convention OddsAPI par défaut : premier nombre = home
+  return `${a}-${b}`
+}
+
+const extraireScoresExacts = (bookmakers, nomDomicile, nomExterieur) => {
+  const cotesParScore = {}
+  for (const bookmaker of bookmakers) {
+    const marche = bookmaker.markets?.find(m => m.key === 'correct_score')
+    if (!marche) continue
+    for (const outcome of marche.outcomes ?? []) {
+      const score = parserScoreExact(outcome, nomDomicile, nomExterieur)
+      if (!score) continue
+      if (!cotesParScore[score]) cotesParScore[score] = []
+      cotesParScore[score].push(outcome.price)
+    }
+  }
+
+  const resultat = {}
+  for (const [score, cotes] of Object.entries(cotesParScore)) {
+    if (cotes.length === 0) continue
+    resultat[score] = Math.round(calculerMediane(cotes) * 100) / 100
+  }
+  return resultat
+}
+
+// Alternate Totals — lignes Over/Under alternatives (1,5 et 3,5 — la 2,5 reste dans `totals`).
+// Outcomes : {name: "Over"|"Under", point, price}
+const LIGNES_ALTERNATE_TOTALS = [1.5, 3.5]
+
+const extraireCotesAlternateTotals = (bookmakers) => {
+  const resultats = {}
+  for (const ligne of LIGNES_ALTERNATE_TOTALS) {
+    const cotesOver = []
+    const cotesUnder = []
+    for (const bookmaker of bookmakers) {
+      const marche = bookmaker.markets?.find(m => m.key === 'alternate_totals')
+      if (!marche) continue
+      for (const outcome of marche.outcomes ?? []) {
+        if (outcome.point !== ligne) continue
+        if (outcome.name === 'Over')  cotesOver.push(outcome.price)
+        if (outcome.name === 'Under') cotesUnder.push(outcome.price)
+      }
+    }
+    const suffixe = ligne.toString().replace('.', '_')
+    resultats[`over_${suffixe}`]  = cotesOver.length > 0  ? Math.round(calculerMediane(cotesOver) * 100) / 100  : null
+    resultats[`under_${suffixe}`] = cotesUnder.length > 0 ? Math.round(calculerMediane(cotesUnder) * 100) / 100 : null
+  }
+  return resultats
+}
+
 const formaterMatch = (match, sport) => {
   const bookmakers = match.bookmakers ?? []
+  const estFoot = sport.cle.startsWith('soccer')
+
   const totals = extraireCotesTotals(bookmakers)
   const spreads = extraireCotesSpreads(bookmakers, match.home_team, match.away_team)
-  const btts = sport.cle.startsWith('soccer') ? extraireCotesBtts(bookmakers) : { oui: null, non: null }
+  const btts             = estFoot ? extraireCotesBtts(bookmakers)                                     : { oui: null, non: null }
+  const dnb              = estFoot ? extraireCotesDrawNoBet(bookmakers, match.home_team, match.away_team) : { domicile: null, exterieur: null }
+  const dc               = estFoot ? extraireCotesDoubleChance(bookmakers, match.home_team, match.away_team) : { dom_nul: null, nul_ext: null, dom_ext: null }
+  const tt               = estFoot ? extraireCotesTeamTotals(bookmakers, match.home_team, match.away_team)   : { domicile: { ligne: null, over: null, under: null }, exterieur: { ligne: null, over: null, under: null } }
+  const altTotals        = estFoot ? extraireCotesAlternateTotals(bookmakers)                          : { over_1_5: null, under_1_5: null, over_3_5: null, under_3_5: null }
+  const scoresExacts     = estFoot ? extraireScoresExacts(bookmakers, match.home_team, match.away_team) : {}
 
   return {
     id: match.id,
-    sport: sport.cle.startsWith('soccer')      ? 'football'
+    oddsapi_sport_key: sport.cle,  // utilisé par enrichisseurButeurs pour appeler /events/{id}/odds
+    sport: estFoot                              ? 'football'
          : sport.cle.startsWith('basketball')  ? 'basketball'
          : sport.cle.startsWith('tennis')      ? 'tennis'
          : sport.cle.startsWith('rugbyunion')  ? 'rugby'
@@ -308,6 +491,28 @@ const formaterMatch = (match, sport) => {
       // BTTS (foot uniquement)
       btts_oui: btts.oui,
       btts_non: btts.non,
+      // Draw No Bet / Pari Sans Nul (foot uniquement)
+      dnb_domicile:  dnb.domicile,
+      dnb_exterieur: dnb.exterieur,
+      // Double Chance (foot uniquement) — 1X, X2, 12
+      dc_1x: dc.dom_nul,
+      dc_x2: dc.nul_ext,
+      dc_12: dc.dom_ext,
+      // Team Totals (foot uniquement) — buts par équipe, ligne dynamique
+      tt_dom_ligne: tt.domicile.ligne,
+      tt_dom_over:  tt.domicile.over,
+      tt_dom_under: tt.domicile.under,
+      tt_ext_ligne: tt.exterieur.ligne,
+      tt_ext_over:  tt.exterieur.over,
+      tt_ext_under: tt.exterieur.under,
+      // Alternate Totals (foot uniquement) — lignes 1,5 et 3,5
+      over_1_5:  altTotals.over_1_5,
+      under_1_5: altTotals.under_1_5,
+      over_3_5:  altTotals.over_3_5,
+      under_3_5: altTotals.under_3_5,
+      // Scores exacts (foot uniquement) — objet {[score]: cote_mediane}
+      // Format des clés : "X-Y" (X=buts domicile, Y=buts extérieur) ou "autre_dom"/"autre_ext"/"autre_nul"
+      scores_exacts: scoresExacts,
     },
     bookmakers_bruts: bookmakers,
   }

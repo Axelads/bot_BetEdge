@@ -23,6 +23,20 @@ const COMPETITION_VERS_LIGUE = {
   'Conference League':    848,
 }
 
+// IDs API-Football des 5 grands championnats — passeurs décisifs activés UNIQUEMENT sur ces matchs
+// (économie quota Free 100 req/jour : ne pas appeler /odds sur les coupes/europe)
+const TOP_5_LIGUES_API = new Set([61, 39, 140, 78, 135])
+
+// Calcul médiane (utilitaire local pour les cotes passeurs)
+const calculerMediane = (valeurs) => {
+  if (valeurs.length === 0) return null
+  const triees = [...valeurs].sort((a, b) => a - b)
+  const milieu = Math.floor(triees.length / 2)
+  return triees.length % 2 === 0
+    ? (triees[milieu - 1] + triees[milieu]) / 2
+    : triees[milieu]
+}
+
 const appelApiFootball = async (endpoint) => {
   try {
     const reponse = await fetch(`${BASE_URL}${endpoint}`, {
@@ -148,6 +162,51 @@ const formaterLineup = (lineupData) => {
   }))
 }
 
+// Récupère les cotes "passeur décisif" (Anytime Assist) via API-Football /odds.
+// API-Football n'a pas de bet ID documenté pour les assists — on parse par nom de bet.
+// Coverage variable selon les bookmakers retournés ; peut être vide pour de nombreux matchs.
+const recupererPasseurs = async (fixtureId) => {
+  const data = await appelApiFootball(`/odds?fixture=${fixtureId}`)
+  if (!data || data.length === 0) return null
+
+  // Patterns de noms de bet recherchés (insensible à la casse)
+  const motifsAssist = /assist|passe(?:ur)?\s*d[ée]cisi/i
+
+  const cotesParJoueur = {}
+  let nbBetsAssistTrouves = 0
+
+  for (const bookmakerData of data) {
+    for (const bookmaker of bookmakerData.bookmakers ?? []) {
+      for (const bet of bookmaker.bets ?? []) {
+        if (!motifsAssist.test(bet.name ?? '')) continue
+        // Exclure les combos goalscorer+assist (on veut le marché Anytime Assist pur)
+        if (/goal\s*scorer|first|last/i.test(bet.name ?? '') && !motifsAssist.test(bet.name)) continue
+
+        nbBetsAssistTrouves++
+        for (const value of bet.values ?? []) {
+          const joueur = value.value
+          const cote = parseFloat(value.odd)
+          if (!joueur || Number.isNaN(cote)) continue
+          if (!cotesParJoueur[joueur]) cotesParJoueur[joueur] = []
+          cotesParJoueur[joueur].push(cote)
+        }
+      }
+    }
+  }
+
+  if (nbBetsAssistTrouves === 0) return null
+
+  const passeurs = Object.entries(cotesParJoueur)
+    .map(([joueur, cotes]) => ({
+      joueur,
+      cote: Math.round(calculerMediane(cotes) * 100) / 100,
+      nb_bookmakers: cotes.length,
+    }))
+    .sort((a, b) => a.cote - b.cote)
+
+  return passeurs.length > 0 ? passeurs : null
+}
+
 // Formate la prédiction de l'API en objet lisible pour Claude
 const formaterPrediction = (pred) => {
   const p = pred.predictions
@@ -163,7 +222,8 @@ const formaterPrediction = (pred) => {
 
 // Enrichit tous les matchs football de la liste avec données API-Football
 // Stratégie quota : 1 appel fixtures/date + 5 appels par match (H2H, injuries, predictions, lineups, stats H2H)
-// = max ~41 appels/cycle × 2 cycles = ~82 appels/jour (sous les 100 du plan gratuit)
+//                 + 1 appel /odds pour passeurs sur les matchs top 5 ligues uniquement
+// = max ~41 appels foot + ~5 passeurs top 5 par cycle × 2 cycles ≈ 92/jour (sous les 100 du plan gratuit, marge serrée)
 export const enrichirMatchsFootball = async (matchs) => {
   const matchsFootball = matchs.filter(m => m.sport === 'football')
 
@@ -263,6 +323,18 @@ export const enrichirMatchsFootball = async (matchs) => {
         blessures_exterieur:     blessuresExterieur,
         prediction_api:          prediction,
         lineups:                 lineups,
+      }
+
+      // Passeurs décisifs — top 5 ligues uniquement (économie quota Free)
+      if (TOP_5_LIGUES_API.has(fixture.league.id)) {
+        const passeurs = await recupererPasseurs(fixtureId)
+        if (passeurs && passeurs.length > 0) {
+          match.passeurs = passeurs
+          const top3 = passeurs.slice(0, 3).map(p => `${p.joueur} (${p.cote})`).join(', ')
+          console.log(`[api-football] ✅ ${match.rencontre} passeurs : ${passeurs.length} joueur(s) | top3: ${top3}`)
+        } else {
+          console.log(`[api-football] ⚠️  ${match.rencontre} passeurs : aucune cote disponible`)
+        }
       }
 
       console.log(

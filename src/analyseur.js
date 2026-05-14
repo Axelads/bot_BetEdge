@@ -278,6 +278,66 @@ const construireSectionCotes = (match) => {
   if (c.btts_oui != null) lignes.push(`- Les deux marquent (Oui) : ${c.btts_oui}`)
   if (c.btts_non != null) lignes.push(`- Les deux marquent (Non) : ${c.btts_non}`)
 
+  // Pari Sans Nul (Draw No Bet) — mise remboursée si match nul
+  if (c.dnb_domicile != null)  lignes.push(`- Pari sans nul ${match.equipe_domicile} : ${c.dnb_domicile}`)
+  if (c.dnb_exterieur != null) lignes.push(`- Pari sans nul ${match.equipe_exterieur} : ${c.dnb_exterieur}`)
+
+  // Double Chance (1X, X2, 12)
+  if (c.dc_1x != null) lignes.push(`- Double chance ${match.equipe_domicile} ou nul (1X) : ${c.dc_1x}`)
+  if (c.dc_x2 != null) lignes.push(`- Double chance nul ou ${match.equipe_exterieur} (X2) : ${c.dc_x2}`)
+  if (c.dc_12 != null) lignes.push(`- Double chance ${match.equipe_domicile} ou ${match.equipe_exterieur} (12) : ${c.dc_12}`)
+
+  // Team Totals (buts par équipe)
+  if (c.tt_dom_ligne != null) {
+    if (c.tt_dom_over != null)  lignes.push(`- ${match.equipe_domicile} marque plus de ${c.tt_dom_ligne} buts : ${c.tt_dom_over}`)
+    if (c.tt_dom_under != null) lignes.push(`- ${match.equipe_domicile} marque moins de ${c.tt_dom_ligne} buts : ${c.tt_dom_under}`)
+  }
+  if (c.tt_ext_ligne != null) {
+    if (c.tt_ext_over != null)  lignes.push(`- ${match.equipe_exterieur} marque plus de ${c.tt_ext_ligne} buts : ${c.tt_ext_over}`)
+    if (c.tt_ext_under != null) lignes.push(`- ${match.equipe_exterieur} marque moins de ${c.tt_ext_ligne} buts : ${c.tt_ext_under}`)
+  }
+
+  // Alternate Totals (lignes Over/Under alternatives — 1,5 et 3,5)
+  if (c.over_1_5 != null)  lignes.push(`- Plus de 1,5 buts : ${c.over_1_5}`)
+  if (c.under_1_5 != null) lignes.push(`- Moins de 1,5 buts : ${c.under_1_5}`)
+  if (c.over_3_5 != null)  lignes.push(`- Plus de 3,5 buts : ${c.over_3_5}`)
+  if (c.under_3_5 != null) lignes.push(`- Moins de 3,5 buts : ${c.under_3_5}`)
+
+  // Scores exacts — affichage trié par cote croissante (les plus probables en premier)
+  if (c.scores_exacts && typeof c.scores_exacts === 'object') {
+    const labelScore = (cle) => {
+      if (cle === 'autre_dom') return `Autre victoire ${match.equipe_domicile}`
+      if (cle === 'autre_ext') return `Autre victoire ${match.equipe_exterieur}`
+      if (cle === 'autre_nul') return 'Autre score nul'
+      return `Score ${cle}`
+    }
+    const entrees = Object.entries(c.scores_exacts)
+      .filter(([, cote]) => typeof cote === 'number')
+      .sort(([, a], [, b]) => a - b)
+    if (entrees.length > 0) {
+      lignes.push('- Scores exacts :')
+      for (const [score, cote] of entrees) {
+        lignes.push(`    ${labelScore(score)} : ${cote}`)
+      }
+    }
+  }
+
+  // Buteurs à tout moment (top 5 ligues OddsAPI) — limité aux 8 joueurs les plus probables
+  if (Array.isArray(match.buteurs) && match.buteurs.length > 0) {
+    lignes.push('- Buteur à tout moment (8 joueurs les plus probables) :')
+    for (const b of match.buteurs.slice(0, 8)) {
+      lignes.push(`    ${b.joueur} : ${b.cote}`)
+    }
+  }
+
+  // Passes décisives à tout moment (top 5 ligues API-Football) — limité aux 8 joueurs les plus probables
+  if (Array.isArray(match.passeurs) && match.passeurs.length > 0) {
+    lignes.push('- Passe décisive à tout moment (8 joueurs les plus probables) :')
+    for (const p of match.passeurs.slice(0, 8)) {
+      lignes.push(`    ${p.joueur} : ${p.cote}`)
+    }
+  }
+
   return lignes.length > 0 ? lignes.join('\n') : '- Aucune cote disponible'
 }
 
@@ -309,8 +369,8 @@ Réponds UNIQUEMENT avec ce JSON (sans markdown, sans texte autour) :
   "analyse_h2h": "1-2 phrases sur le face-à-face historique (ou 'données insuffisantes')",
   "analyse_compositions": "1-2 phrases sur absences/blessures/compos (ou 'données insuffisantes')",
   "pari_recommande": "description courte du pari suggéré",
-  "type_pari_recommande": "un des types: victoire_domicile | victoire_exterieur | nul | plus_de | moins_de | les_deux_marquent | handicap",
-  "valeur_pari": "valeur précise ex: 2.5 pour over/under, nom équipe pour victoire, '${match.equipe_domicile} -1.5' pour handicap, 'oui'/'non' pour les_deux_marquent",
+  "type_pari_recommande": "un des types: victoire_domicile | victoire_exterieur | nul | plus_de | moins_de | les_deux_marquent | handicap | pari_sans_nul | double_chance | score_exact | buteur_a_tout_moment | passes_decisives_joueur",
+  "valeur_pari": "valeur précise ex: 2.5 pour over/under, nom équipe pour victoire, '${match.equipe_domicile} -1.5' pour handicap, 'oui'/'non' pour les_deux_marquent, nom équipe pour pari_sans_nul, '1X'/'X2'/'12' pour double_chance, 'X-Y' (ex: '2-1') pour score_exact, nom du joueur pour buteur_a_tout_moment et passes_decisives_joueur",
   "cote_suggeree": nombre (la cote correspondante parmi celles fournies),
   "probabilite_estimee": nombre entre 0.0 et 1.0 (estimation HONNÊTE de la probabilité réelle que ce pari gagne),
   "edge_pourcent": nombre (peut être négatif — applique la formule ci-dessus avec cote_suggeree),
@@ -355,8 +415,8 @@ Réponds UNIQUEMENT avec ce JSON (sans markdown, sans texte autour) :
   "est_opportunite_reelle": true ou false,
   "score_valeur": nombre entre 0 et 100,
   "pari_recommande": "description courte du pari suggéré",
-  "type_pari_recommande": "victoire_domicile | victoire_exterieur | nul | plus_de | moins_de | les_deux_marquent | handicap",
-  "valeur_pari": "valeur précise ex: équipe, 2.5, oui, '${match.equipe_domicile} -1.5'",
+  "type_pari_recommande": "victoire_domicile | victoire_exterieur | nul | plus_de | moins_de | les_deux_marquent | handicap | pari_sans_nul | double_chance | score_exact | buteur_a_tout_moment | passes_decisives_joueur",
+  "valeur_pari": "valeur précise ex: équipe, 2.5, oui, '${match.equipe_domicile} -1.5', '1X'/'X2'/'12', '2-1' pour score_exact, nom du joueur pour buteur_a_tout_moment / passes_decisives_joueur",
   "cote_recommandee": nombre (la cote anormale trouvée = ${anomalie.cote_anomalie}),
   "probabilite_estimee": nombre entre 0.0 et 1.0 (probabilité réelle estimée que ce pari gagne),
   "edge_pourcent": nombre (peut être négatif),

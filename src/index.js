@@ -9,6 +9,7 @@ dotenv.config()
 import { recupererMatchsAVenir } from './collecteurCotes.js'
 import { enrichirMatchsFootball } from './enrichisseurApiFootball.js'
 import { enrichirAutresSports } from './enrichisseurAutresSports.js'
+import { enrichirButeurs } from './enrichisseurButeurs.js'
 import {
   analyserMatch, analyserCoteAnomale, critiquerAnalyse,
   construirePromptSysteme, construirePromptSystemeAnomalie,
@@ -63,14 +64,30 @@ const PLAGES_RISQUE = {
   tres_risque: { min: 3.00, max: 20.0 },
 }
 
-// Champs de `match.cotes` qui ne sont PAS des cotes (lignes/points de référence)
-const CHAMPS_NON_COTE = new Set(['ligne_totals', 'handicap_domicile_point'])
+// Champs de `match.cotes` qui ne sont PAS des cotes (lignes/points de référence, ou objets imbriqués)
+const CHAMPS_NON_COTE = new Set([
+  'ligne_totals',
+  'handicap_domicile_point',
+  'tt_dom_ligne',
+  'tt_ext_ligne',
+  'scores_exacts',  // objet imbriqué {[score]: cote}, traité à part
+])
 
-// Extrait uniquement les vraies cotes d'un match (exclut les lignes/points de référence)
+// Extrait uniquement les vraies cotes d'un match (exclut lignes/points de référence et objets).
+// `scores_exacts` (objet) est aplati : on inclut ses valeurs dans la liste des cotes.
 const extraireCotesReelles = (match) => {
-  return Object.entries(match.cotes ?? {})
-    .filter(([cle, val]) => val != null && !CHAMPS_NON_COTE.has(cle))
-    .map(([, val]) => val)
+  const cotes = []
+  for (const [cle, val] of Object.entries(match.cotes ?? {})) {
+    if (val == null) continue
+    if (CHAMPS_NON_COTE.has(cle)) {
+      if (cle === 'scores_exacts' && typeof val === 'object') {
+        cotes.push(...Object.values(val).filter(v => typeof v === 'number'))
+      }
+      continue
+    }
+    if (typeof val === 'number') cotes.push(val)
+  }
+  return cotes
 }
 
 // Pré-filtre global (large) — réduit les appels API-Football tout en couvrant tous les profils
@@ -404,6 +421,7 @@ const lancerAnalyse = async () => {
 
     // Enrichissement mutualisé (tous les utilisateurs en profitent)
     await enrichirMatchsFootball(matchsFiltres)
+    await enrichirButeurs(matchsFiltres)
     await enrichirAutresSports(matchsFiltres)
 
     let nbAlertesTotal = 0
@@ -449,6 +467,7 @@ const lancerAnalyseBatch = async () => {
 
     // Enrichissement mutualisé entre tous les utilisateurs (foot + basket + hockey + rugby)
     await enrichirMatchsFootball(matchsFiltres)
+    await enrichirButeurs(matchsFiltres)
     await enrichirAutresSports(matchsFiltres)
 
     const toutesRequetes = []
@@ -663,8 +682,10 @@ const verifierResultatsBatch = async () => {
 
 console.log('🚀 BetEdge Bot — Démarrage...')
 console.log('[bot] Optimisations actives : prompt caching + batch 9h + pré-filtre cotes + 2 cycles/jour')
-console.log('[bot] Marchés OddsAPI : foot=h2h+totals+spreads+btts (4 crédits) | autres=h2h+totals+spreads (3 crédits)')
-console.log('[bot] OddsAPI : max 25 compétitions × 2 cycles × ~3.3 marchés ≈ 5000 crédits/mois (plan $30/mois = 20k crédits)')
+console.log('[bot] Marchés OddsAPI : foot=h2h+totals+spreads+btts+draw_no_bet+double_chance+team_totals+alternate_totals+correct_score (9 crédits) | autres=h2h+totals+spreads (3 crédits)')
+console.log('[bot] OddsAPI : max 25 compétitions × 2 cycles × ~6.5 marchés ≈ 10500 crédits/mois (plan $30/mois = 20k crédits)')
+console.log('[bot] Buteurs (top 5 ligues UE) : OddsAPI /events/{id}/odds — 10 crédits/match × ~5-10 matchs/cycle × 2 ≈ 3000-6000 crédits/mois')
+console.log('[bot] Passeurs décisifs (top 5 ligues UE) : API-Football /odds — ~10-20 req/jour additionnels (plan Free 100/jour)')
 
 await envoyerMessageDemarrage()
 
