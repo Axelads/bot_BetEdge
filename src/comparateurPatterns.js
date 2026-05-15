@@ -232,7 +232,7 @@ export const doitEnvoyerAlerte = (analyse) => {
   const permissif = process.env.MODE_PERMISSIF === 'true'
   const seuilScore = permissif ? 45 : 60
   const seuilProb  = permissif ? 0.35 : PROB_MIN_PATTERN
-  const seuilEdge  = permissif ? 2   : EDGE_MIN  // Plancher minimum 2% même en permissif (fiabilité)
+  const seuilEdge  = permissif ? -10 : EDGE_MIN  // Mode permissif = déboguer, pas filtrer. Edge peut être négatif.
 
   // En mode strict : Claude doit explicitement valider via envoyer_alerte + confiance ≠ faible
   if (!permissif) {
@@ -322,6 +322,7 @@ export const doitEnvoyerAlerteAnomalie = (anomalie, analyseAI) => {
   const permissif = process.env.MODE_PERMISSIF === 'true'
   const seuilAnomalie = permissif ? 45 : 60
   const seuilValeur   = permissif ? 40 : 65
+  const seuilEdgeAno  = permissif ? -10 : EDGE_MIN  // Mode permissif = déboguer sans filtre edge
 
   if (!anomalie || anomalie.score_anomalie < seuilAnomalie) return false
   if (!analyseAI) return false
@@ -335,7 +336,7 @@ export const doitEnvoyerAlerteAnomalie = (anomalie, analyseAI) => {
   if (!Number.isFinite(prob) || prob < PROB_MIN_ANOMALIE) return false
 
   const edge = calculerEdge(analyseAI.probabilite_estimee, anomalie.cote_anomalie)
-  if (edge == null || edge < EDGE_MIN) return false
+  if (edge == null || edge < seuilEdgeAno) return false
 
   return true
 }
