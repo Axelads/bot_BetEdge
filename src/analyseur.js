@@ -72,11 +72,20 @@ ${sectionPerdants}
 
 Format de pari souhaité : ${instructionFormat}
 
+═══ CALCUL DE CONFIANCE (RÈGLE MÉCANIQUE) ═══
+Ne base PAS "confiance" sur la probabilité — base-la UNIQUEMENT sur la QUALITÉ des données et le score :
+  • "elevee"  : données solides ET cohérentes (forme récente + H2H explicites) ET score_similarite ≥ 75
+  • "moyenne" : données minimales présentes (forme ET H2H, même si partielles) ET score_similarite ≥ 50
+  • "faible"  : données ABSENTES (forme manque OU H2H absent) OU score_similarite < 50
+
+STRICT : Si score_similarite ≥ 60 ET les données de base existent → tu dois mettre "moyenne" au MINIMUM.
+Sans cette règle, zéro alerte ne sort. Sois discipliné, même si tu doutes de la prob.
+
 ═══ RÈGLES D'ALERTE (envoyer_alerte = true UNIQUEMENT si TOUTES réunies) ═══
 1. edge_pourcent ≥ 5
 2. probabilite_estimee ≥ 0.45 (au moins 45% de chances — pas de cotes hasardeuses)
 3. score_similarite ≥ 60 (cohérence avec patterns gagnants)
-4. confiance ≠ "faible"
+4. confiance ≠ "faible" (voir "CALCUL DE CONFIANCE" ci-dessus — c'est mécanique, pas subjectif)
 5. AUCUN tag perdant majeur identifié sur ce match
 
 Si l'une de ces conditions n'est pas remplie → envoyer_alerte = false, point.
@@ -128,12 +137,20 @@ ${sectionPerdants}
 ═══ STATS ${source.toUpperCase()} ═══
 sport=${stats.meileurSport} | type=${stats.meilleurTypePari} | tranche cote=${stats.meilleureTrancheCote} | win rate haute confiance=${stats.tauxReussiteHauteConfiance}%${lignePerdants}
 
+═══ CALCUL DE CONFIANCE POUR LES ANOMALIES ═══
+Même règle que patterns : base-toi sur les DONNÉES, pas sur ta confiance subjective :
+  • "elevee"  : données complètes (forme + H2H + blessures contextualisées) ET score_valeur ≥ 75
+  • "moyenne" : données minimales (forme OU H2H) ET score_valeur ≥ 55
+  • "faible"  : données absentes OU score_valeur < 55
+
+STRICT : Si score_valeur ≥ 65 → confiance MINIMUM "moyenne".
+
 ═══ RÈGLES D'ALERTE (est_opportunite_reelle = true UNIQUEMENT si TOUTES réunies) ═══
 1. edge_pourcent ≥ 5
 2. probabilite_estimee ≥ 0.40
 3. AUCUNE cause rationnelle identifiée (pas de blessure majeure non intégrée, pas d'équipe B avérée)
 4. score_valeur ≥ 65
-5. confiance ≠ "faible"
+5. confiance ≠ "faible" (voir "CALCUL DE CONFIANCE" ci-dessus)
 
 Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks, sans texte avant ou après.`
 }
