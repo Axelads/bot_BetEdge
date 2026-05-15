@@ -230,17 +230,22 @@ export const doitEnvoyerAlerte = (analyse) => {
   if (!analyse) return false
 
   const permissif = process.env.MODE_PERMISSIF === 'true'
-  const seuilScore = permissif ? 45 : 60
-  const seuilProb  = permissif ? 0.35 : PROB_MIN_PATTERN
-  const seuilEdge  = permissif ? -10 : EDGE_MIN  // Mode permissif = déboguer, pas filtrer. Edge peut être négatif.
+  // Mode intelligent (permissif=true): seuils balancés — pas strict, pas du garbage
+  // Mode strict: requirements complètes (Claude explicit, confiance, edge ≥ 5%)
+  const seuilScore = permissif ? 55 : 60
+  const seuilProb  = permissif ? 0.40 : PROB_MIN_PATTERN
+  const seuilEdge  = permissif ? 0 : EDGE_MIN  // Balancé: edge ≥ 0 (pas négatif); strict: edge ≥ 5%
 
-  // En mode strict : Claude doit explicitement valider via envoyer_alerte + confiance ≠ faible
+  // Mode strict : Claude doit explicitement valider + confiance ≠ faible
   if (!permissif) {
     if (analyse.envoyer_alerte !== true) return false
     if (analyse.confiance === 'faible') return false
   }
 
-  // Validations communes strict/permissif — fondamentales pour la qualité
+  // Mode balancé: on accepte confiance "moyenne" ou "elevee", jamais "faible"
+  if (permissif && analyse.confiance === 'faible') return false
+
+  // Validations communes : score, probabilité, edge
   if (analyse.score_similarite < seuilScore) return false
 
   const prob = Number(analyse.probabilite_estimee)
@@ -320,9 +325,9 @@ export const preparerAlerte = (match, analyse) => {
 // Détermine si une alerte de type "cote anormale" doit être envoyée
 export const doitEnvoyerAlerteAnomalie = (anomalie, analyseAI) => {
   const permissif = process.env.MODE_PERMISSIF === 'true'
-  const seuilAnomalie = permissif ? 45 : 60
-  const seuilValeur   = permissif ? 40 : 65
-  const seuilEdgeAno  = permissif ? -10 : EDGE_MIN  // Mode permissif = déboguer sans filtre edge
+  const seuilAnomalie = permissif ? 50 : 60
+  const seuilValeur   = permissif ? 55 : 65
+  const seuilEdgeAno  = permissif ? 0 : EDGE_MIN  // Mode balancé: edge ≥ 0; strict: edge ≥ 5%
 
   if (!anomalie || anomalie.score_anomalie < seuilAnomalie) return false
   if (!analyseAI) return false
@@ -330,6 +335,9 @@ export const doitEnvoyerAlerteAnomalie = (anomalie, analyseAI) => {
     if (analyseAI.est_opportunite_reelle !== true) return false
     if (analyseAI.confiance === 'faible') return false
   }
+  // Mode balancé: on accepte confiance "moyenne" ou "elevee", jamais "faible"
+  if (permissif && analyseAI.confiance === 'faible') return false
+
   if (analyseAI.score_valeur < seuilValeur) return false
 
   const prob = Number(analyseAI.probabilite_estimee)
