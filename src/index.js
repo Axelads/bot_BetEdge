@@ -16,7 +16,7 @@ import {
   creerRequeteBatchPattern, creerRequeteBatchAnomalie,
   idSafe, soumettreRequetesBatch, verifierStatutBatch, recupererResultatsBatch,
 } from './analyseur.js'
-import { calculerStats, doitEnvoyerAlerte, preparerAlerte, doitEnvoyerAlerteAnomalie, preparerAlerteAnomalie, appliquerCritique, filtreContexteCritique, calculerTier } from './comparateurPatterns.js'
+import { calculerStats, doitEnvoyerAlerte, preparerAlerte, doitEnvoyerAlerteAnomalie, preparerAlerteAnomalie, appliquerCritique, filtreContexteCritique, calculerTier, appliquerRegleMecaniqueConfiance } from './comparateurPatterns.js'
 import { detecterAnomaliesCotes } from './detecteurAnomalie.js'
 import { envoyerAlerte, envoyerAlerteAnomalie, envoyerMessageDemarrage } from './telegram.js'
 import { traiterReponsesTelegram } from './receptionReponses.js'
@@ -309,7 +309,12 @@ const analyserPourUtilisateur = async (profil, tousMatchsAVenir) => {
 
     // ── Piste 1 : Pattern matching ──────────────────────────────────────────
     if (analyserPatterns) {
-      const analyse = await analyserMatch(match, parisGagnants, parisPerdants, stats, nbUtilisateurs, { formatPari })
+      let analyse = await analyserMatch(match, parisGagnants, parisPerdants, stats, nbUtilisateurs, { formatPari })
+
+      // Force la confiance selon la règle mécanique (qualité données + score)
+      if (analyse) {
+        analyse = appliquerRegleMecaniqueConfiance(analyse)
+      }
 
       if (analyse) {
         console.log(`[bot] ${match.rencontre} → patterns ${analyse.score_similarite}/100 (${analyse.confiance})`)
@@ -354,7 +359,12 @@ const analyserPourUtilisateur = async (profil, tousMatchsAVenir) => {
       if (anomalie) {
         console.log(`[bot] Anomalie ${match.rencontre}: "${anomalie.outcome}" +${anomalie.ecart_pourcent}% vs marché (${anomalie.bookmaker})`)
 
-        const analyseAnomalie = await analyserCoteAnomale(match, anomalie, parisGagnants, parisPerdants, stats, nbUtilisateurs)
+        let analyseAnomalie = await analyserCoteAnomale(match, anomalie, parisGagnants, parisPerdants, stats, nbUtilisateurs)
+
+        // Force la confiance selon la règle mécanique
+        if (analyseAnomalie) {
+          analyseAnomalie = appliquerRegleMecaniqueConfiance(analyseAnomalie)
+        }
 
         if (analyseAnomalie) {
           console.log(`[bot] ${match.rencontre} → valeur ${analyseAnomalie.score_valeur}/100 (${analyseAnomalie.confiance})`)

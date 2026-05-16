@@ -220,6 +220,42 @@ export const calculerEdge = (probabiliteEstimee, cote) => {
   return Math.round(edge * 10) / 10 // arrondi 0.1
 }
 
+// Force la confiance selon la RÈGLE MÉCANIQUE (qualité données + score)
+// Claude peut être trop conservateur — on réapplique la logique explicite du prompt système
+// Cette fonction garantit cohérence : si données + score OK → confiance ≥ "moyenne"
+export const appliquerRegleMecaniqueConfiance = (analyse) => {
+  if (!analyse) return analyse
+
+  const score = Number(analyse.score_similarite) ?? 0
+  const forme = analyse.analyse_forme && !analyse.analyse_forme.toLowerCase().includes('insuffisantes')
+  const h2h = analyse.analyse_h2h && !analyse.analyse_h2h.toLowerCase().includes('insuffisantes')
+  const donnees = forme && h2h  // Les deux présentes = données minimales OK
+
+  // Règle mécanique : confiance basée UNIQUEMENT sur (qualité données) + (score)
+  let confianceRecalculee = analyse.confiance
+
+  if (score >= 75 && donnees) {
+    // Données solides + score bon → élever à "élevée" minimum
+    confianceRecalculee = 'elevee'
+  } else if (score >= 60 && donnees) {
+    // Données minimales + score acceptable → "moyenne" minimum (nunca "faible")
+    confianceRecalculee = 'moyenne'
+  } else if (score < 50 || !donnees) {
+    // Score trop bas ou données manquent → "faible"
+    confianceRecalculee = 'faible'
+  }
+
+  // Log si Claude avait mis "faible" mais règle mécanique dit "moyenne/élevée"
+  if (analyse.confiance === 'faible' && confianceRecalculee !== 'faible') {
+    console.log(`[confiance] Claude disait "${analyse.confiance}", règle mécanique force "${confianceRecalculee}" (score=${score}, donnees=${donnees})`)
+  }
+
+  return {
+    ...analyse,
+    confiance: confianceRecalculee,
+  }
+}
+
 // Détermine si une alerte pattern doit être envoyée
 // Mode permissif activable via MODE_PERMISSIF=true (env var) — pour générer des alertes
 // même quand le pipeline value-betting strict rejette tout (typique fin de saison foot).
@@ -234,7 +270,7 @@ export const doitEnvoyerAlerte = (analyse) => {
   // Mode strict: requirements complètes (Claude explicit, confiance, edge ≥ 5%)
   const seuilScore = permissif ? 55 : 60
   const seuilProb  = permissif ? 0.40 : PROB_MIN_PATTERN
-  const seuilEdge  = permissif ? 0 : EDGE_MIN  // Balancé: edge ≥ 0 (pas négatif); strict: edge ≥ 5%
+  const seuilEdge  = permissif ? 2 : EDGE_MIN  // Balancé: edge ≥ 2% (plancher minimum); strict: edge ≥ 5%
 
   // Mode strict : Claude doit explicitement valider + confiance ≠ faible
   if (!permissif) {
@@ -327,7 +363,7 @@ export const doitEnvoyerAlerteAnomalie = (anomalie, analyseAI) => {
   const permissif = process.env.MODE_PERMISSIF === 'true'
   const seuilAnomalie = permissif ? 50 : 60
   const seuilValeur   = permissif ? 55 : 65
-  const seuilEdgeAno  = permissif ? 0 : EDGE_MIN  // Mode balancé: edge ≥ 0; strict: edge ≥ 5%
+  const seuilEdgeAno  = permissif ? 2 : EDGE_MIN  // Mode balancé: edge ≥ 2% (plancher minimum); strict: edge ≥ 5%
 
   if (!anomalie || anomalie.score_anomalie < seuilAnomalie) return false
   if (!analyseAI) return false
