@@ -729,18 +729,18 @@ if (process.argv.includes('--force-cycle')) {
   process.exit(0)
 }
 
-// 19h20 Paris (17h20 UTC) — TEST CE SOIR → cycle BATCH (-50% coût Anthropic, résultats traités à 19h21)
-cron.schedule('20 17 * * *', () => {
+// 9h00 Paris (7h UTC) → cycle BATCH (-50% coût Anthropic, résultats traités à 10h30)
+cron.schedule('0 7 * * *', () => {
   lancerAnalyseBatch()
 })
 
-// 19h21 Paris (17h21 UTC) — TEST CE SOIR → vérification des résultats du batch 19h20
-cron.schedule('21 17 * * *', () => {
+// 10h30 Paris (8h30 UTC) → vérification des résultats du batch 9h00
+cron.schedule('30 8 * * *', () => {
   verifierResultatsBatch()
 })
 
-// 19h20 Paris (17h20 UTC) — TEST CE SOIR → analyse synchrone temps réel (matchs du soir)
-cron.schedule('20 17 * * *', () => {
+// 18h00 Paris (16h UTC) → analyse synchrone temps réel (matchs du soir)
+cron.schedule('0 16 * * *', () => {
   lancerAnalyse()
 })
 
@@ -750,9 +750,9 @@ cron.schedule('*/5 6-21 * * *', () => {
 })
 
 console.log('[bot] Crons actifs :')
-console.log('  19h20 Paris → cycle batch asynchrone (-50% coût Claude) [TEST CE SOIR]')
-console.log('  19h21 Paris → vérification résultats batch + envoi alertes [TEST CE SOIR]')
-console.log('  19h20 Paris → cycle synchrone temps réel (matchs du soir) [TEST CE SOIR]')
+console.log('  9h00 Paris → cycle batch asynchrone (-50% coût Claude)')
+console.log('  10h30 Paris → vérification résultats batch + envoi alertes')
+console.log('  18h00 Paris → cycle synchrone temps réel (matchs du soir)')
 console.log('  */5   Paris (8h-23h) → lecture réponses OUI/NON Telegram')
 
 console.log('\n[bot] 🔒 Garde-fous de fiabilité des cotes :')
