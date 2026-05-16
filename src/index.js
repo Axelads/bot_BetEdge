@@ -11,14 +11,13 @@ import { enrichirMatchsFootball } from './enrichisseurApiFootball.js'
 import { enrichirAutresSports } from './enrichisseurAutresSports.js'
 import { enrichirButeurs } from './enrichisseurButeurs.js'
 import {
-  analyserMatch, analyserCoteAnomale, critiquerAnalyse,
-  construirePromptSysteme, construirePromptSystemeAnomalie,
-  creerRequeteBatchPattern, creerRequeteBatchAnomalie,
+  analyserMatch, critiquerAnalyse,
+  construirePromptSysteme,
+  creerRequeteBatchPattern,
   idSafe, soumettreRequetesBatch, verifierStatutBatch, recupererResultatsBatch,
 } from './analyseur.js'
-import { calculerStats, doitEnvoyerAlerte, preparerAlerte, doitEnvoyerAlerteAnomalie, preparerAlerteAnomalie, appliquerCritique, filtreContexteCritique, calculerTier, appliquerRegleMecaniqueConfiance } from './comparateurPatterns.js'
-import { detecterAnomaliesCotes } from './detecteurAnomalie.js'
-import { envoyerAlerte, envoyerAlerteAnomalie, envoyerMessageDemarrage } from './telegram.js'
+import { calculerStats, doitEnvoyerAlerte, preparerAlerte, appliquerCritique, filtreContexteCritique, calculerTier, appliquerRegleMecaniqueConfiance } from './comparateurPatterns.js'
+import { envoyerAlerte, envoyerMessageDemarrage } from './telegram.js'
 import { traiterReponsesTelegram } from './receptionReponses.js'
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
@@ -263,9 +262,6 @@ const analyserPourUtilisateur = async (profil, tousMatchsAVenir) => {
 
   // Lecture des préférences (valeurs par défaut si non configuré)
   const sourceAgreee = estAdmin || prefBot?.source_donnees === 'communaute'
-  const typesAnalyse = prefBot?.types_analyse ?? ['patterns', 'anomalies']
-  const analyserPatterns = typesAnalyse.includes('patterns')
-  const analyserAnomalies = typesAnalyse.includes('anomalies')
   const formatPari = prefBot?.format_pari ?? 'sec'
 
   // Filtre des matchs selon les préférences de l'utilisateur
@@ -352,56 +348,6 @@ const analyserPourUtilisateur = async (profil, tousMatchsAVenir) => {
       }
     }
 
-    // ── Piste 2 : Anomalie de cotes ─────────────────────────────────────────
-    if (analyserAnomalies) {
-      const anomalie = detecterAnomaliesCotes(match)
-
-      if (anomalie) {
-        console.log(`[bot] Anomalie ${match.rencontre}: "${anomalie.outcome}" +${anomalie.ecart_pourcent}% vs marché (${anomalie.bookmaker})`)
-
-        let analyseAnomalie = await analyserCoteAnomale(match, anomalie, parisGagnants, parisPerdants, stats, nbUtilisateurs)
-
-        // Force la confiance selon la règle mécanique
-        if (analyseAnomalie) {
-          analyseAnomalie = appliquerRegleMecaniqueConfiance(analyseAnomalie)
-        }
-
-        if (analyseAnomalie) {
-          console.log(`[bot] ${match.rencontre} → valeur ${analyseAnomalie.score_valeur}/100 (${analyseAnomalie.confiance})`)
-        }
-
-        if (doitEnvoyerAlerteAnomalie(anomalie, analyseAnomalie)) {
-          // Phase 2 — Critique avocat du diable (2ème passe Claude)
-          const permissifAno = process.env.MODE_PERMISSIF === 'true'
-          const critique = permissifAno ? { verdict: 'valider' } : await critiquerAnalyse(match, analyseAnomalie, { type: 'anomalie', anomalie })
-          const analyseFinale = permissifAno ? analyseAnomalie : appliquerCritique(analyseAnomalie, critique)
-
-          if (!analyseFinale) {
-            console.log(`[bot] ❌ Critique rejette anomalie: ${match.rencontre} — ${critique?.raison_critique ?? 'verdict rejeter'}`)
-          } else if (!doitEnvoyerAlerteAnomalie(anomalie, analyseFinale)) {
-            console.log(`[bot] ❌ Après ajustement critique, seuils anomalie non atteints: ${match.rencontre}`)
-          } else {
-            const donneesAlertePB = { ...preparerAlerteAnomalie(match, anomalie, analyseFinale), sport: match.sport, user: userId }
-            const tier = calculerTier({ score: donneesAlertePB.score_valeur, edge: donneesAlertePB.edge_pourcent, confiance: analyseFinale.confiance })
-            console.log(`[bot] ✅ Alerte anomalie [${tier}] (critique=${critique?.verdict ?? 'no-op'}): ${analyseFinale.pari_recommande}`)
-            const alerteAnomalie = {
-              ...donneesAlertePB,
-              outcome_anomalie: anomalie.outcome,
-              cote_mediane: anomalie.cote_mediane,
-              bookmaker_anomalie: anomalie.bookmaker,
-              ecart_pourcent: anomalie.ecart_pourcent,
-              confiance: analyseFinale.confiance,
-              tier,
-            }
-            const alerteSauvegardee = await sauvegarderAlerte(donneesAlertePB)
-            if (alerteSauvegardee) {
-              const envoye = await envoyerAlerteAnomalie({ ...alerteAnomalie, telegramChatId, alerteId: alerteSauvegardee.id })
-              if (envoye) { await marquerAlerteTelegramEnvoyee(alerteSauvegardee.id); nbAlertes++ }
-            }
-          }
-        }
-      }
-    }
   }
 
   if (nbRejetesPreFiltre > 0) {
@@ -499,7 +445,6 @@ const lancerAnalyseBatch = async () => {
       const { user: userId, telegram_chat_id: telegramChatId, preferences_bot: prefBot } = profil
       const estAdmin = userId === ID_SUPERUSER
       const sourceAgreee = estAdmin || prefBot?.source_donnees === 'communaute'
-      const typesAnalyse = prefBot?.types_analyse ?? ['patterns', 'anomalies']
       const formatPari = prefBot?.format_pari ?? 'sec'
 
       // Filtre des matchs selon les préférences de l'utilisateur
@@ -519,7 +464,6 @@ const lancerAnalyseBatch = async () => {
       const nbUtilisateurs = sourceAgreee ? new Set(parisGagnants.map(p => p.user).filter(Boolean)).size : null
 
       const promptPattern = construirePromptSysteme(parisGagnants, parisPerdants, stats, nbUtilisateurs, { formatPari })
-      const promptAnomalie = construirePromptSystemeAnomalie(parisGagnants, parisPerdants, stats, nbUtilisateurs)
 
       let nbRejetesPreFiltreBatch = 0
       for (const match of matchsUtilisateur) {
@@ -533,28 +477,13 @@ const lancerAnalyseBatch = async () => {
 
         const { bookmakers_bruts, ...matchSansBrut } = match
 
-        if (typesAnalyse.includes('patterns')) {
-          const reqPattern = creerRequeteBatchPattern(match, promptPattern, userId)
-          toutesRequetes.push(reqPattern)
-          contexte[reqPattern.custom_id] = { type: 'pattern', match: matchSansBrut, userId, telegramChatId }
-        }
-
-        if (typesAnalyse.includes('anomalies')) {
-          const anomalie = detecterAnomaliesCotes(match)
-          if (anomalie) {
-            const reqAnomalie = creerRequeteBatchAnomalie(match, anomalie, promptAnomalie, userId)
-            toutesRequetes.push(reqAnomalie)
-            contexte[reqAnomalie.custom_id] = { type: 'anomalie', match: matchSansBrut, anomalie, userId, telegramChatId }
-          }
-        }
+        const reqPattern = creerRequeteBatchPattern(match, promptPattern, userId)
+        toutesRequetes.push(reqPattern)
+        contexte[reqPattern.custom_id] = { type: 'pattern', match: matchSansBrut, userId, telegramChatId }
       }
 
       const matchsAnalyses = matchsUtilisateur.length - nbRejetesPreFiltreBatch
-      const nbPatterns = typesAnalyse.includes('patterns') ? matchsAnalyses : 0
-      const nbAnomalies = typesAnalyse.includes('anomalies')
-        ? matchsUtilisateur.filter(m => !filtreContexteCritique(m) && detecterAnomaliesCotes(m) !== null).length
-        : 0
-      console.log(`[bot] ${userId} — ${nbPatterns} requêtes pattern + ${nbAnomalies} requêtes anomalie (${matchsAnalyses}/${matchsUtilisateur.length} matchs après pré-filtre)`)
+      console.log(`[bot] ${userId} — ${matchsAnalyses} requêtes pattern (${matchsAnalyses}/${matchsUtilisateur.length} matchs après pré-filtre)`)
     }
 
     if (toutesRequetes.length === 0) {
@@ -652,47 +581,6 @@ const verifierResultatsBatch = async () => {
       }
     }
 
-    if (type === 'anomalie') {
-      if (analyse) {
-        console.log(`[batch] ${match.rencontre} → valeur ${analyse.score_valeur}/100 (${analyse.confiance})`)
-      }
-
-      if (doitEnvoyerAlerteAnomalie(anomalie, analyse)) {
-        // Phase 2 — Critique avocat du diable
-        const critique = await critiquerAnalyse(match, analyse, { type: 'anomalie', anomalie })
-        const analyseFinale = appliquerCritique(analyse, critique)
-
-        if (!analyseFinale) {
-          console.log(`[batch] ❌ Critique rejette anomalie: ${match.rencontre} — ${critique?.raison_critique ?? 'verdict rejeter'}`)
-        } else if (!doitEnvoyerAlerteAnomalie(anomalie, analyseFinale)) {
-          console.log(`[batch] ❌ Après ajustement critique, seuils anomalie non atteints: ${match.rencontre}`)
-        } else {
-          const donneesAlertePB = { ...preparerAlerteAnomalie(match, anomalie, analyseFinale), sport: match.sport, user: userId }
-          const tier = calculerTier({ score: donneesAlertePB.score_valeur, edge: donneesAlertePB.edge_pourcent, confiance: analyseFinale.confiance })
-          console.log(`[batch] ⚡ Alerte anomalie [${tier}] (critique=${critique?.verdict ?? 'no-op'}): ${analyseFinale.pari_recommande}`)
-
-          const alerteAnomalie = {
-            ...donneesAlertePB,
-            outcome_anomalie: anomalie.outcome,
-            cote_mediane: anomalie.cote_mediane,
-            bookmaker_anomalie: anomalie.bookmaker,
-            ecart_pourcent: anomalie.ecart_pourcent,
-            confiance: analyseFinale.confiance,
-            tier,
-          }
-
-          const alerteSauvegardee = await sauvegarderAlerte(donneesAlertePB)
-
-          if (alerteSauvegardee) {
-            const envoye = await envoyerAlerteAnomalie({ ...alerteAnomalie, telegramChatId, alerteId: alerteSauvegardee.id })
-            if (envoye) {
-              await marquerAlerteTelegramEnvoyee(alerteSauvegardee.id)
-              nbAlertes++
-            }
-          }
-        }
-      }
-    }
   }
 
   effacerEtatBatch()
@@ -760,4 +648,3 @@ console.log('  • Marge bookmaker H2H : max 9% (déjà test de qualité)')
 console.log('  • Mode strict : score ≥60, prob ≥0.45, edge ≥5%, validation Claude obligatoire')
 console.log('  • Mode permissif : score ≥45, prob ≥0.35, edge ≥2% (minimum fiabilité)')
 console.log('  • Critique avocat du diable (2e passe Claude) : appliquée mode strict')
-console.log('  • Détecteur anomalies : alertes côte anormale (écart multi-bookmakers)')
