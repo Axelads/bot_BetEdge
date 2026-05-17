@@ -220,34 +220,31 @@ export const calculerEdge = (probabiliteEstimee, cote) => {
   return Math.round(edge * 10) / 10 // arrondi 0.1
 }
 
-// Force la confiance selon la RÈGLE MÉCANIQUE (qualité données + score)
+// Force la confiance selon la RÈGLE MÉCANIQUE (score uniquement)
 // Claude peut être trop conservateur — on réapplique la logique explicite du prompt système
-// Cette fonction garantit cohérence : si données + score OK → confiance ≥ "moyenne"
+// Logique simple : si score_similarite est bon, on impose une confiance minimale
 export const appliquerRegleMecaniqueConfiance = (analyse) => {
   if (!analyse) return analyse
 
   const score = Number(analyse.score_similarite) ?? 0
-  const forme = analyse.analyse_forme && !analyse.analyse_forme.toLowerCase().includes('insuffisantes')
-  const h2h = analyse.analyse_h2h && !analyse.analyse_h2h.toLowerCase().includes('insuffisantes')
-  const donnees = forme && h2h  // Les deux présentes = données minimales OK
-
-  // Règle mécanique : confiance basée UNIQUEMENT sur (qualité données) + (score)
   let confianceRecalculee = analyse.confiance
 
-  if (score >= 75 && donnees) {
-    // Données solides + score bon → élever à "élevée" minimum
+  // Règle mécanique simple : pas d'alerte si confiance "faible", sinon on rehausse
+  if (score >= 75) {
+    // Score excellent → "élevée" minimum
     confianceRecalculee = 'elevee'
-  } else if (score >= 60 && donnees) {
-    // Données minimales + score acceptable → "moyenne" minimum (nunca "faible")
-    confianceRecalculee = 'moyenne'
-  } else if (score < 50 || !donnees) {
-    // Score trop bas ou données manquent → "faible"
+  } else if (score >= 60) {
+    // Score bon (60-75) → "moyenne" minimum, jamais "faible"
+    // Raison : si la similarité avec les patterns gagnants est ≥60, c'est un signal fort
+    confianceRecalculee = analyse.confiance === 'faible' ? 'moyenne' : analyse.confiance
+  } else if (score < 50) {
+    // Score faible → accepte "faible" de Claude
     confianceRecalculee = 'faible'
   }
 
-  // Log si Claude avait mis "faible" mais règle mécanique dit "moyenne/élevée"
+  // Log si Claude avait mis "faible" mais règle mécanique force "moyenne"
   if (analyse.confiance === 'faible' && confianceRecalculee !== 'faible') {
-    console.log(`[confiance] Claude disait "${analyse.confiance}", règle mécanique force "${confianceRecalculee}" (score=${score}, donnees=${donnees})`)
+    console.log(`[confiance] Claude: "${analyse.confiance}" → rehaussée à "${confianceRecalculee}" (score=${score})`)
   }
 
   return {

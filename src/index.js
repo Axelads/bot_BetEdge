@@ -556,8 +556,10 @@ const verifierResultatsBatch = async () => {
 
       if (analyse && doitEnvoyerAlerte(analyse)) {
         // Phase 2 — Critique avocat du diable (synchrone, faible volume = quelques alertes max)
-        const critique = await critiquerAnalyse(match, analyse, { type: 'pattern' })
-        const analyseFinale = appliquerCritique(analyse, critique)
+        // Bypass en mode permissif : on garde l'analyse initiale telle quelle.
+        const permissif = process.env.MODE_PERMISSIF === 'true'
+        const critique = permissif ? { verdict: 'valider' } : await critiquerAnalyse(match, analyse, { type: 'pattern' })
+        const analyseFinale = permissif ? analyse : appliquerCritique(analyse, critique)
 
         if (!analyseFinale) {
           console.log(`[batch] ❌ Critique rejette: ${match.rencontre} — ${critique?.raison_critique ?? 'verdict rejeter'}`)
