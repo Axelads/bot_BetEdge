@@ -81,6 +81,11 @@ Ne base PAS "confiance" sur la probabilité — base-la UNIQUEMENT sur la QUALIT
 STRICT : Si score_similarite ≥ 60 ET les données de base existent → tu dois mettre "moyenne" au MINIMUM.
 Sans cette règle, zéro alerte ne sort. Sois discipliné, même si tu doutes de la prob.
 
+Retourne AUSSI un champ "data_quality" ("low"|"medium"|"high") qui résume la qualité des données disponibles :
+  • "high"   : tu as forme + H2H + blessures/lineups (foot) OU forme + H2H (autres sports)
+  • "medium" : tu as forme ET H2H (même partiels) — suffisant pour confiance "moyenne"
+  • "low"    : données manquent significativement (forme OU H2H absent)
+
 ═══ RÈGLES D'ALERTE (envoyer_alerte = true UNIQUEMENT si TOUTES réunies) ═══
 1. edge_pourcent ≥ 5
 2. probabilite_estimee ≥ 0.45 (au moins 45% de chances — pas de cotes hasardeuses)
@@ -90,7 +95,8 @@ Sans cette règle, zéro alerte ne sort. Sois discipliné, même si tu doutes de
 
 Si l'une de ces conditions n'est pas remplie → envoyer_alerte = false, point.
 
-Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks, sans texte avant ou après.`
+Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks, sans texte avant ou après.
+Champs obligatoires : score_similarite, pari_recommande, type_pari_recommande, confiance, data_quality, envoyer_alerte, probabilite_estimee, cote_suggeree, raisonnement.`
 }
 
 export const construirePromptSystemeAnomalie = (parisGagnants, parisPerdants = [], stats, nbUtilisateurs = null) => {
@@ -140,10 +146,12 @@ sport=${stats.meileurSport} | type=${stats.meilleurTypePari} | tranche cote=${st
 ═══ CALCUL DE CONFIANCE POUR LES ANOMALIES ═══
 Même règle que patterns : base-toi sur les DONNÉES, pas sur ta confiance subjective :
   • "elevee"  : données complètes (forme + H2H + blessures contextualisées) ET score_valeur ≥ 75
-  • "moyenne" : données minimales (forme OU H2H) ET score_valeur ≥ 55
+  • "moyenne" : données minimales (forme ET H2H) ET score_valeur ≥ 55
   • "faible"  : données absentes OU score_valeur < 55
 
-STRICT : Si score_valeur ≥ 65 → confiance MINIMUM "moyenne".
+STRICT : Si score_valeur ≥ 65 ET données minimales présentes → confiance MINIMUM "moyenne".
+
+Retourne AUSSI "data_quality" ("low"|"medium"|"high") — voir consignes patterns ci-dessus.
 
 ═══ RÈGLES D'ALERTE (est_opportunite_reelle = true UNIQUEMENT si TOUTES réunies) ═══
 1. edge_pourcent ≥ 5
@@ -152,7 +160,8 @@ STRICT : Si score_valeur ≥ 65 → confiance MINIMUM "moyenne".
 4. score_valeur ≥ 65
 5. confiance ≠ "faible" (voir "CALCUL DE CONFIANCE" ci-dessus)
 
-Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks, sans texte avant ou après.`
+Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks, sans texte avant ou après.
+Champs obligatoires : score_anomalie, score_valeur, type_pari_recommande, valeur_pari, confiance, data_quality, est_opportunite_reelle, probabilite_estimee, cote_anomalie, raisonnement.`
 }
 
 // ─── Prompts utilisateur (par match — non cacheables) ─────────────────────────
